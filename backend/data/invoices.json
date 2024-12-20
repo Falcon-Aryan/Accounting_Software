@@ -1,0 +1,60 @@
+{
+  "invoices": [
+    {
+      "id": "9371-9098",
+      "invoice_no": "INV-2024-001",
+      "invoice_date": "2024-12-20",
+      "due_date": "2025-01-10",
+      "customer_name": "Aryan Khanna",
+      "status": "posted",
+      "products": [
+        {
+          "description": "test",
+          "name": "test",
+          "price": 225,
+          "quantity": 1,
+          "tax_amount": 0,
+          "tax_rate": 0,
+          "total": 225
+        },
+        {
+          "description": "test",
+          "name": "test2",
+          "price": 125,
+          "quantity": 1,
+          "tax_amount": 0,
+          "tax_rate": 0,
+          "total": 125
+        }
+      ],
+      "total_amount": 350,
+      "balance_due": 350,
+      "payments": [],
+      "payment_terms": "due_on_receipt",
+      "created_at": "2024-12-20T10:08:13.942139",
+      "updated_at": "2024-12-20T16:25:12.353476",
+      "converted_from_estimate": {
+        "id": "1582-6996",
+        "estimate_no": "EST-2024-001",
+        "conversion_date": "2024-12-20T10:08:13.942139"
+      },
+      "last_payment_date": null,
+      "notes": null
+    }
+  ],
+  "summary": {
+    "draft_count": 0,
+    "posted_count": 0,
+    "paid_count": 0,
+    "overdue_count": 0,
+    "cancelled_count": 0,
+    "void_count": 0,
+    "draft_amount": 0.0,
+    "posted_amount": 0.0,
+    "paid_amount": 0.0,
+    "overdue_amount": 0.0,
+    "void_amount": 0.0,
+    "total_receivable": 350.0,
+    "total_collected": 0.0
+  }
+}

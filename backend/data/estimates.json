@@ -1,0 +1,35 @@
+{
+  "estimates": [
+    {
+      "id": "1582-6996",
+      "estimate_no": "EST-2024-001",
+      "estimate_date": "2024-12-20",
+      "customer_name": "Aryan Khanna",
+      "status": "accepted",
+      "products": [
+        {
+          "name": "test",
+          "description": "test",
+          "price": 225.0
+        },
+        {
+          "name": "test2",
+          "description": "test",
+          "price": 125.0
+        }
+      ],
+      "total_amount": 350.0,
+      "created_at": "2024-12-20T16:06:28.952195",
+      "updated_at": "2024-12-20T10:08:13.942139",
+      "converted_to_invoice": {
+        "id": "9371-9098",
+        "invoice_no": "INV-2024-001",
+        "conversion_date": "2024-12-20T10:08:13.942139"
+      }
+    }
+  ],
+  "summary": {
+    "total_count": 1,
+    "total_amount": 350.0
+  }
+}

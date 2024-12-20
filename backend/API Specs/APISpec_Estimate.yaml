@@ -1,0 +1,379 @@
+openapi: 3.0.0
+info:
+  title: Estimate API Specification
+  version: 1.0.0
+  description: Complete API specification for the estimate management system, including data models and operations
+
+components:
+  schemas:
+    Product:
+      type: object
+      required:
+        - name
+        - description
+        - price
+        - quantity
+      properties:
+        name:
+          type: string
+          description: Name of the product or service
+        description:
+          type: string
+          description: Description of the product
+        price:
+          type: number
+          format: float
+          description: Price per unit
+        quantity:
+          type: number
+          format: float
+          description: Quantity of the product
+        tax_rate:
+          type: number
+          format: float
+          description: Tax rate percentage
+        tax_amount:
+          type: number
+          format: float
+          description: Calculated tax amount
+        total:
+          type: number
+          format: float
+          description: Total amount including tax
+
+    Estimate:
+      type: object
+      required:
+        - id
+        - estimate_no
+        - customer_name
+        - estimate_date
+        - products
+        - status
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the estimate
+        estimate_no:
+          type: string
+          description: Estimate number
+        estimate_date:
+          type: string
+          format: date-time
+          description: Date of the estimate
+        customer_name:
+          type: string
+          description: Name of the customer
+        status:
+          type: string
+          enum: [draft, sent, accepted, rejected, expired]
+          description: Current status of the estimate
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+          description: List of products in the estimate
+        total_amount:
+          type: number
+          format: float
+          description: Total estimate amount
+        notes:
+          type: string
+          description: Additional notes about the estimate
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when estimate was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when estimate was last updated
+        converted_to_invoice:
+          type: object
+          properties:
+            id:
+              type: string
+              description: ID of the created invoice
+            invoice_no:
+              type: string
+              description: Number of the created invoice
+            conversion_date:
+              type: string
+              format: date-time
+              description: Date when converted to invoice
+
+    EstimateList:
+      type: object
+      properties:
+        estimates:
+          type: array
+          items:
+            $ref: '#/components/schemas/Estimate'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: Total number of estimates
+            page:
+              type: integer
+              description: Current page number
+            per_page:
+              type: integer
+              description: Number of items per page
+            total_pages:
+              type: integer
+              description: Total number of pages
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+
+paths:
+  /api/estimates/create_estimate:
+    post:
+      summary: Create a new estimate
+      description: Create a new estimate with the given details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - customer_name
+                - products
+              properties:
+                customer_name:
+                  type: string
+                products:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Product'
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Estimate created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  estimate:
+                    $ref: '#/components/schemas/Estimate'
+        '400':
+          description: Invalid estimate data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/estimates/convert_to_invoice/{id}:
+    post:
+      summary: Convert estimate to invoice
+      description: Convert an accepted estimate into an invoice
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Estimate ID
+      responses:
+        '201':
+          description: Estimate successfully converted to invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  invoice_id:
+                    type: string
+                  invoice_no:
+                    type: string
+        '400':
+          description: Invalid estimate status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Estimate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/estimates/list_estimates:
+    get:
+      summary: List all estimates
+      description: Get a paginated list of estimates with optional filters
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          description: Page number for pagination
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+          description: Number of items per page
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [draft, sent, accepted, rejected, expired]
+          description: Filter by estimate status
+        - in: query
+          name: customer_name
+          schema:
+            type: string
+          description: Filter by customer name
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+          description: Filter by start date
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+          description: Filter by end date
+      responses:
+        '200':
+          description: Successfully retrieved estimates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstimateList'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/estimates/get_estimate/{id}:
+    get:
+      summary: Get estimate details
+      description: Get detailed information about a specific estimate
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Estimate ID
+      responses:
+        '200':
+          description: Estimate found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Estimate'
+        '404':
+          description: Estimate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/estimates/update_estimate/{id}:
+    patch:
+      summary: Update an estimate
+      description: Update estimate details and/or status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Estimate ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer_name:
+                  type: string
+                estimate_date:
+                  type: string
+                  format: date-time
+                products:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Product'
+                status:
+                  type: string
+                  enum: [draft, sent, accepted, rejected, expired]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Estimate updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Estimate'
+        '400':
+          description: Invalid estimate data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Estimate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/estimates/delete_estimate/{id}:
+    delete:
+      summary: Delete an estimate
+      description: Delete an estimate if it is in draft status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Estimate ID
+      responses:
+        '200':
+          description: Estimate deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Cannot delete non-draft estimate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Estimate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

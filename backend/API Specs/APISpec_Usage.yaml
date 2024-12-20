@@ -1,0 +1,96 @@
+openapi: 3.0.0
+info:
+  title: Usage Settings API
+  description: API for managing Usage Limit Settings
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development server
+
+paths:
+  /api/usage/get_usage:
+    get:
+      summary: Retrieve usage information
+      responses:
+        200:
+          description: Successful retrieval of usage details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usage'
+        500:
+          description: Internal server error.
+
+  /api/usage/update_usage:        
+    put:
+      summary: Update usage information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Usage'
+      responses:
+        200:
+          description: Usage information updated successfully.
+        400:
+          description: Invalid input.
+        500:
+          description: Internal server error. 
+          
+components:
+  schemas:
+    Usage: 
+      type: object
+      properties:
+
+        billable_users:
+          type: object
+          properties:
+
+            current:
+              type: integer
+              description: Current number of billable users.
+              
+            max:
+              type: integer
+              description: Maximum number of allowed billable users.
+
+            link:
+              type: string
+              description: Link to the page listing billable users.
+              example: "/api/manageusers"
+              
+        chart_of_accounts:
+          type: object
+          properties:
+
+            current:
+              type: integer
+              description: Current number of accounts in the chart.
+
+            max:
+              type: integer
+              description: Maximum number of allowed accounts in the chart.
+
+            link:
+              type: string
+              description: Link to the page listing chart of accounts.
+              example: "/api/chartofaccounts"
+              
+        tag_groups:
+          type: object
+          properties:
+
+            current:
+              type: integer
+              description: Current number of tag groups.
+
+            max:
+              type: integer
+              description: Maximum number of allowed tag groups.
+
+            link:
+              type: string
+              description: Link to the page listing chart of accounts.
+              example: "/api/tags"

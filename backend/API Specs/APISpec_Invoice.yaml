@@ -1,0 +1,527 @@
+openapi: 3.0.0
+info:
+  title: Invoice API Specification
+  version: 1.0.0
+  description: Complete API specification for the invoice management system, including data models and operations
+
+components:
+  schemas:
+    Product:
+      type: object
+      required:
+        - name
+        - description
+        - price
+        - quantity
+      properties:
+        name:
+          type: string
+          description: Name of the product or service
+        description:
+          type: string
+          description: Description of the product
+        price:
+          type: number
+          format: float
+          description: Price per unit
+        quantity:
+          type: number
+          format: float
+          description: Quantity of the product
+        tax_rate:
+          type: number
+          format: float
+          description: Tax rate percentage
+        tax_amount:
+          type: number
+          format: float
+          description: Calculated tax amount
+        total:
+          type: number
+          format: float
+          description: Total amount including tax
+
+    Payment:
+      type: object
+      required:
+        - id
+        - date
+        - amount
+        - payment_method
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the payment
+        date:
+          type: string
+          format: date-time
+          description: Date of the payment
+        amount:
+          type: number
+          format: float
+          description: Payment amount
+        payment_method:
+          type: string
+          enum: [cash, bank_transfer, credit_card, check, other]
+          description: Method of payment
+        reference:
+          type: string
+          description: Payment reference number or description
+        notes:
+          type: string
+          description: Additional notes about the payment
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when payment was recorded
+        transaction_id:
+          type: string
+          description: ID of the associated transaction
+
+    Invoice:
+      type: object
+      required:
+        - id
+        - invoice_no
+        - customer_name
+        - invoice_date
+        - due_date
+        - products
+        - status
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the invoice
+        invoice_no:
+          type: string
+          description: Invoice number
+        invoice_date:
+          type: string
+          format: date-time
+          description: Date of the invoice
+        due_date:
+          type: string
+          format: date-time
+          description: Due date for payment
+        customer_name:
+          type: string
+          description: Name of the customer
+        status:
+          type: string
+          enum: [draft, sent, partially_paid, paid, overdue, cancelled]
+          description: Current status of the invoice
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+          description: List of products in the invoice
+        total_amount:
+          type: number
+          format: float
+          description: Total invoice amount
+        balance_due:
+          type: number
+          format: float
+          description: Remaining balance to be paid
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+          description: List of payments made
+        payment_terms:
+          type: string
+          enum: [due_on_receipt, net_15, net_30, net_60, custom]
+          description: Payment terms for the invoice
+        notes:
+          type: string
+          description: Additional notes about the invoice
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when invoice was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when invoice was last updated
+        last_payment_date:
+          type: string
+          format: date-time
+          description: Date of the last payment received
+        converted_from_estimate:
+          type: object
+          properties:
+            id:
+              type: string
+              description: ID of the original estimate
+            estimate_no:
+              type: string
+              description: Number of the original estimate
+            conversion_date:
+              type: string
+              format: date-time
+              description: Date when converted from estimate
+
+    InvoicesSummary:
+      type: object
+      properties:
+        total_count:
+          type: integer
+          description: Total number of invoices
+        total_amount:
+          type: number
+          format: float
+          description: Total amount of all invoices
+        total_paid:
+          type: number
+          format: float
+          description: Total amount paid
+        total_due:
+          type: number
+          format: float
+          description: Total amount still due
+        overdue_count:
+          type: integer
+          description: Number of overdue invoices
+        overdue_amount:
+          type: number
+          format: float
+          description: Total amount of overdue invoices
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+
+paths:
+  /api/invoices/create_invoice:
+    post:
+      summary: Create a new invoice
+      description: Create a new invoice with the given details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - customer_name
+                - payment_terms
+                - products
+              properties:
+                customer_name:
+                  type: string
+                payment_terms:
+                  type: string
+                  enum: [due_on_receipt, net_15, net_30, net_60, custom]
+                products:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Product'
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Invoice created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  invoice:
+                    $ref: '#/components/schemas/Invoice'
+        '400':
+          description: Invalid invoice data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/add_payment/{id}:
+    post:
+      summary: Add a payment to an invoice
+      description: Record a payment for a specific invoice
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Invoice ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - payment_method
+              properties:
+                amount:
+                  type: number
+                  format: float
+                payment_method:
+                  type: string
+                  enum: [cash, bank_transfer, credit_card, check, other]
+                reference:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Payment added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  payment:
+                    $ref: '#/components/schemas/Payment'
+                  invoice_status:
+                    type: string
+                  balance_due:
+                    type: number
+                    format: float
+        '400':
+          description: Invalid payment data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/get_payments/{id}:
+    get:
+      summary: Get payments for an invoice
+      description: Get all payments recorded for a specific invoice
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Invoice ID
+      responses:
+        '200':
+          description: Successfully retrieved payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Payment'
+                  total_paid:
+                    type: number
+                    format: float
+                  balance_due:
+                    type: number
+                    format: float
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/list_invoices:
+    get:
+      summary: List all invoices
+      description: Get a paginated list of invoices with optional filters
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          description: Page number for pagination
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+          description: Number of items per page
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [draft, sent, partially_paid, paid, overdue, cancelled]
+          description: Filter by invoice status
+        - in: query
+          name: customer_name
+          schema:
+            type: string
+          description: Filter by customer name
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+          description: Filter by start date
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+          description: Filter by end date
+      responses:
+        '200':
+          description: Successfully retrieved invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invoice'
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: Total number of invoices
+                      page:
+                        type: integer
+                        description: Current page number
+                      per_page:
+                        type: integer
+                        description: Number of items per page
+                      total_pages:
+                        type: integer
+                        description: Total number of pages
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/get_invoice/{id}:
+    get:
+      summary: Get invoice details
+      description: Get detailed information about a specific invoice
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Invoice ID
+      responses:
+        '200':
+          description: Invoice found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/update_invoice/{id}:
+    patch:
+      summary: Update an invoice
+      description: Update invoice details and/or status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Invoice ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer_name:
+                  type: string
+                invoice_date:
+                  type: string
+                  format: date-time
+                due_date:
+                  type: string
+                  format: date-time
+                products:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Product'
+                status:
+                  type: string
+                  enum: [draft, sent, partially_paid, paid, overdue, cancelled]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Invoice updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '400':
+          description: Invalid invoice data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/delete_invoice/{id}:
+    delete:
+      summary: Delete an invoice
+      description: Delete an invoice if it is in draft status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Invoice ID
+      responses:
+        '200':
+          description: Invoice deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Cannot delete non-draft invoice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

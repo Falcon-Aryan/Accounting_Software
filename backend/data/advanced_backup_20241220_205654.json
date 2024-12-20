@@ -1,0 +1,42 @@
+{
+  "accounting": {
+    "fiscal_year_start": "January",
+    "income_tax_year_start": "January",
+    "accounting_method": "",
+    "close_the_books": false
+  },
+  "company_type": {
+    "tax_form": "Limited Liability"
+  },
+  "chart_of_accounts": {
+    "enable_account_numbers": false,
+    "tips_account": ""
+  },
+  "categories": {
+    "track_classes": true,
+    "track_locations": true
+  },
+  "automation": {
+    "pre_fill_forms": false,
+    "apply_credits_automatically": true,
+    "invoice_unbilled_activity": false,
+    "apply_bill_payments_automatically": false
+  },
+  "projects": {
+    "organize_job_activity": true
+  },
+  "currency": {
+    "home_currency": "United States Dollar (USD)",
+    "multicurrency": false
+  },
+  "other_preferences": {
+    "date_format": "mm/dd/yyyy",
+    "currency_format": "",
+    "customer_label": "",
+    "duplicate_check_warning": false,
+    "vendor_bill_warning": false,
+    "duplicate_journal_warning": false,
+    "sign_out_after_inactivity": "",
+    "currency": "United States Dollar (USD)"
+  }
+}

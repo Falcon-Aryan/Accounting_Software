@@ -1,0 +1,262 @@
+openapi: 3.0.0
+info:
+  title: Chart of Accounts API Specification
+  version: 1.0.0
+  description: Complete API specification for the Chart of Accounts system, including data models and operations
+
+components:
+  schemas:
+    Account:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - subtype
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the account
+        name:
+          type: string
+          description: Name of the account
+        type:
+          type: string
+          enum: [asset, liability, equity, revenue, expense]
+          description: Type of account
+        subtype:
+          type: string
+          description: Subtype or category of the account
+        description:
+          type: string
+          description: Optional description of the account
+        balance:
+          type: number
+          format: float
+          description: Current balance of the account
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when account was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when account was last updated
+
+    AccountList:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: Total number of accounts
+            page:
+              type: integer
+              description: Current page number
+            per_page:
+              type: integer
+              description: Number of items per page
+            total_pages:
+              type: integer
+              description: Total number of pages
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+
+paths:
+  /api/coa/list_accounts:
+    get:
+      summary: List all accounts
+      description: Get a paginated list of accounts with optional filters
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          description: Page number for pagination
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+          description: Number of items per page
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [asset, liability, equity, revenue, expense]
+          description: Filter by account type
+        - in: query
+          name: subtype
+          schema:
+            type: string
+          description: Filter by account subtype
+      responses:
+        '200':
+          description: Successfully retrieved accounts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountList'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/coa/create_account:
+    post:
+      summary: Create a new account
+      description: Create a new account in the chart of accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - type
+                - subtype
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [asset, liability, equity, revenue, expense]
+                subtype:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: Invalid account data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/coa/get_account/{id}:
+    get:
+      summary: Get account details
+      description: Get detailed information about a specific account
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Account ID
+      responses:
+        '200':
+          description: Account found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/coa/update_account/{id}:
+    patch:
+      summary: Update an account
+      description: Update account details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Account ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [asset, liability, equity, revenue, expense]
+                subtype:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Account updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: Invalid account data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/coa/delete_account/{id}:
+    delete:
+      summary: Delete an account
+      description: Delete an account if it has no transactions
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Account ID
+      responses:
+        '200':
+          description: Account deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Cannot delete account with transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

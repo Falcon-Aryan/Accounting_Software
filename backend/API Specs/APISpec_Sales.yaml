@@ -1,0 +1,272 @@
+openapi: 3.0.0
+info:
+  title: Sales Settings API
+  description: API for managing sales settings and preferences
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development server
+paths:
+  /api/sales/get_sales:
+    get:
+      summary: Retrieve sales settings
+      tags:
+        - Sales Settings
+      responses:
+        '200':
+          description: Sales settings retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalesSettings'
+        '404':
+          description: Sales settings not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /api/sales/create_sales:
+    post:
+      summary: Create new sales settings
+      tags:
+        - Sales Settings
+      requestBody:
+        description: Sales settings to create
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SalesSettings'
+      responses:
+        '201':
+          description: Sales settings created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Sales settings created successfully
+                  settings:
+                    $ref: '#/components/schemas/SalesSettings'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Sales settings already exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /api/sales/update_sales:
+    patch:
+      summary: Update sales settings
+      tags:
+        - Sales Settings
+      requestBody:
+        description: Updated sales settings
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SalesSettings'
+      responses:
+        '200':
+          description: Sales settings updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Sales settings updated successfully
+                  settings:
+                    $ref: '#/components/schemas/SalesSettings'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Sales settings not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /api/sales/delete_sales:
+    delete:
+      summary: Reset sales settings to defaults
+      tags:
+        - Sales Settings
+      responses:
+        '200':
+          description: Sales settings reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Sales settings reset successfully
+        '404':
+          description: Sales settings not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /api/sales/get_field_options:
+    get:
+      summary: Get available options for sales settings fields
+      tags:
+        - Sales Settings
+      responses:
+        '200':
+          description: Field options retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  preferred_invoice_terms:
+                    type: array
+                    items:
+                      type: string
+                    example: ["due_on_receipt", "net_15", "net_30", "net_60"]
+                  preferred_delivery_method:
+                    type: array
+                    items:
+                      type: string
+                    example: ["email", "print", "none"]
+                  payment_methods:
+                    type: array
+                    items:
+                      type: string
+                    example: ["cash", "credit_card", "bank_transfer", "check"]
+                    
+components:
+  schemas:
+    SalesSettings:
+      type: object
+      properties:
+        sales_form_content:
+          type: object
+          properties:
+            preferred_invoice_terms:
+              type: string
+              enum: ["due_on_receipt", "net_15", "net_30", "net_60"]
+            preferred_delivery_method:
+              type: string
+              enum: ["email", "print", "none"]
+            shipping:
+              type: string
+              enum: ["none", "flat_rate", "weight_based", "custom"]
+            custom_fields:
+              type: boolean
+            custom_transaction_numbers:
+              type: boolean
+            service_date:
+              type: boolean
+            discount:
+              type: boolean
+            deposit:
+              type: boolean
+            show_products_columns:
+              type: array
+              items:
+                type: string
+              example: ["quantity", "rate", "amount"]
+              
+        messages:
+          type: object
+          properties:
+            default_email_message:
+              type: string
+            default_statement_message:
+              type: string
+              
+        reminders:
+          type: object
+          properties:
+            invoice_reminders:
+              type: boolean
+            statement_reminders:
+              type: boolean
+            reminder_schedule:
+              type: object
+              properties:
+                first_reminder:
+                  type: string
+                second_reminder:
+                  type: string
+                third_reminder:
+                  type: string
+                  
+        automation:
+          type: object
+          properties:
+            auto_send_invoices:
+              type: boolean
+            auto_send_payment_receipts:
+              type: boolean
+            auto_send_estimates:
+              type: boolean
+            auto_convert_estimates:
+              type: boolean
+              
+        online_delivery:
+          type: object
+          properties:
+            online_invoice_delivery:
+              type: boolean
+            online_estimate_delivery:
+              type: boolean
+            allow_online_payment:
+              type: boolean
+            allow_online_signature:
+              type: boolean
+            allow_partial_payments:
+              type: boolean
+            allow_tips:
+              type: boolean
+              
+        products_and_services:
+          type: object
+          properties:
+            track_quantity_and_price:
+              type: boolean
+            track_inventory:
+              type: boolean
+            show_product_images:
+              type: boolean
+            default_markup_percentage:
+              type: number
+              
+        statements:
+          type: object
+          properties:
+            show_aging_table:
+              type: boolean
+            show_invoice_details:
+              type: boolean
+            show_payment_history:
+              type: boolean
+            group_by_customer:
+              type: boolean
+              
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid input data

@@ -1,0 +1,221 @@
+openapi: 3.0.0
+info:
+  title: Advanced Settings API
+  description: API for managing Advanced settings
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development server
+paths:
+  /api/advanced/get_advanced:
+    get:
+      summary: Retrieve all advanced settings
+      tags:
+        - Advanced Settings
+      responses:
+        200:
+          description: A list of all advanced settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdvancedSettings'
+  /api/advanced/create_advanced:
+    post:
+      summary: Create or update advanced settings
+      tags:
+        - Advanced Settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvancedSettings'
+      responses:
+        201:
+          description: Advanced settings created or updated successfully.
+  /api/advanced/update_advanced:
+    patch:
+      summary: Update specific advanced settings
+      tags:
+        - Advanced Settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvancedSettings'
+      responses:
+        200:
+          description: Advanced settings updated successfully.
+  /api/advanced/delete_advanced:
+    delete:
+      summary: Reset all advanced settings to defaults
+      tags:
+        - Advanced Settings
+      responses:
+        200:
+          description: Advanced settings reset to defaults.
+
+
+components:
+  schemas:
+    AdvancedSettings:
+      type: object
+      properties:
+      
+        accounting:
+          type: object
+          properties:
+          
+            fiscal_year_start:
+              type: string
+              description: First Month of Fiscal Year
+              enum:
+                - January
+                - February
+                - March
+                - April
+                - May
+                - June
+                - July
+                - August
+                - September
+                - October
+                - November
+                - December
+                
+            income_tax_year_start:
+              type: string
+              description: First Month of income tax year
+              enum:
+                - Same as fiscal year
+                - January
+              
+            accounting_method:
+              type: string
+              description: Accounting Method
+              enum:
+                - Accrual
+                - Cash
+              
+            close_the_books:
+              type: boolean
+
+        company_type:
+          type: object
+          properties:
+            tax_form:
+              type: string
+              description: Tax form used by the company.
+              enum:
+                - Sole Proprietor (Form 1040)
+                - Partnership or limited liability company (Form 1065)
+                - Small Business corporation, two or more owners (Form 1120S)
+                - Corporation, one or more shareholders (Form 1120)
+                - Nonprofit organization (Form 990)
+                - Limited Liability
+                - Other (Please specify)
+              
+        chart_of_accounts:
+          type: object
+          properties:
+          
+            enable_account_numbers:
+              type: boolean
+              description: Enable Account Numbers
+              
+            tips_account:
+              type: string
+              description: Account Choice for Gratuity
+              enum:
+                - Cash on Hand
+                - Accounts Receivable
+
+        categories:
+          type: object
+          properties:
+          
+            track_classes:
+              type: boolean
+              
+            track_locations:
+              type: boolean
+
+        automation:
+          type: object
+          properties:
+          
+            pre_fill_forms:
+              type: boolean
+              
+            apply_credits_automatically:
+              type: boolean
+              
+            invoice_unbilled_activity:
+              type: boolean
+              
+            apply_bill_payments_automatically:
+              type: boolean
+
+        projects:
+          type: object
+          properties:
+          
+            organize_job_activity:
+              type: boolean
+
+        currency:
+          type: object
+          properties:
+          
+            home_currency:
+              type: string
+              example: United States Dollar
+              
+            multicurrency:
+              type: boolean
+              description: Enable Multicurrency
+
+        # business_network:
+        #   type: object
+        #   properties:
+          
+        #     allow_members_to_find_me:
+        #       type: boolean
+
+        other_preferences:
+          type: object
+          properties:
+          
+            date_format:
+              type: string
+              description: Choose a date format
+              enum:
+                - mm/dd/yyyy
+                - dd/mm/yyyy
+                - yyyy/mm/dd
+              
+            currency_format:
+              type: string
+              description: Currency Format
+              
+            customer_label:
+              type: string
+              description: Customer Label
+              
+            duplicate_check_warning:
+              type: boolean
+              
+            vendor_bill_warning:
+              type: boolean
+              
+            duplicate_journal_warning:
+              type: boolean
+              
+            sign_out_after_inactivity:
+              type: string
+              description: Sign Out Timer
+              enum:
+                - 1 hour
+                - 2 hours
+                - 3 hours

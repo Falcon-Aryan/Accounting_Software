@@ -1,0 +1,356 @@
+openapi: 3.0.0
+info:
+  title: Transactions API Specification
+  version: 1.0.0
+  description: Complete API specification for the Transactions system, including data models and operations
+
+paths:
+  /api/transactions/list:
+    get:
+      summary: List transactions
+      description: Get a paginated list of transactions with optional filters
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Number of items per page
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter by start date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter by end date
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, posted, void]
+          description: Filter by transaction status
+        - name: account_id
+          in: query
+          schema:
+            type: string
+          description: Filter by account ID
+      responses:
+        '200':
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionList'
+        '400':
+          description: Invalid parameters
+        '500':
+          description: Server error
+
+  /api/transactions/create:
+    post:
+      summary: Create transaction
+      description: Create a new transaction (initially in draft status)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - date
+                - entries
+              properties:
+                date:
+                  type: string
+                  format: date
+                description:
+                  type: string
+                reference:
+                  type: string
+                entries:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/TransactionEntry'
+                  minItems: 2
+      responses:
+        '201':
+          description: Transaction created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Invalid transaction data
+        '500':
+          description: Server error
+
+  /api/transactions/get/{id}:
+    get:
+      summary: Get transaction
+      description: Get details of a specific transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '404':
+          description: Transaction not found
+        '500':
+          description: Server error
+
+  /api/transactions/patch/{id}:
+    patch:
+      summary: Update transaction
+      description: Update specific fields of a transaction (only allowed for draft status)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date:
+                  type: string
+                  format: date
+                description:
+                  type: string
+                reference:
+                  type: string
+                entries:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/TransactionEntry'
+                  minItems: 2
+      responses:
+        '200':
+          description: Transaction updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Invalid transaction data or transaction not in draft status
+        '404':
+          description: Transaction not found
+        '500':
+          description: Server error
+
+  /api/transactions/post/{id}:
+    post:
+      summary: Post transaction
+      description: Post a transaction (changes status from draft to posted)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction posted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Transaction is not in draft status or entries don't balance
+        '404':
+          description: Transaction not found
+        '500':
+          description: Server error
+
+  /api/transactions/delete/{id}:
+    delete:
+      summary: Delete transaction
+      description: Delete a transaction (only allowed for draft status)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Transaction deleted successfully"
+        '400':
+          description: Cannot delete transaction that is not in draft status
+        '404':
+          description: Transaction not found
+        '500':
+          description: Server error
+
+  /api/transactions/void/{id}:
+    post:
+      summary: Void transaction
+      description: Void a posted transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  description: Reason for voiding the transaction
+      responses:
+        '200':
+          description: Transaction voided successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Transaction is not in posted status
+        '404':
+          description: Transaction not found
+        '500':
+          description: Server error
+
+components:
+  schemas:
+    TransactionEntry:
+      type: object
+      required:
+        - accountId
+        - amount
+        - type
+      properties:
+        accountId:
+          type: string
+          description: ID of the account involved in this entry
+        amount:
+          type: number
+          format: float
+          description: Amount for this entry (positive for both debit and credit)
+        type:
+          type: string
+          enum: [debit, credit]
+          description: Type of entry (debit or credit)
+        description:
+          type: string
+          description: Optional description for this specific entry
+
+    Transaction:
+      type: object
+      required:
+        - id
+        - date
+        - entries
+        - status
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the transaction
+        date:
+          type: string
+          format: date
+          description: Date of the transaction
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionEntry'
+          minItems: 2
+          description: List of transaction entries (must have at least 2 entries)
+        description:
+          type: string
+          description: General description of the transaction
+        reference:
+          type: string
+          description: Reference number or document number
+        status:
+          type: string
+          enum: [draft, posted, void]
+          description: Status of the transaction
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when transaction was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when transaction was last updated
+        posted_at:
+          type: string
+          format: date-time
+          description: Timestamp when transaction was posted
+        voided_at:
+          type: string
+          format: date-time
+          description: Timestamp when transaction was voided
+        created_by:
+          type: string
+          description: ID of user who created the transaction
+        updated_by:
+          type: string
+          description: ID of user who last updated the transaction
+        posted_by:
+          type: string
+          description: ID of user who posted the transaction
+        voided_by:
+          type: string
+          description: ID of user who voided the transaction
+
+    TransactionList:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: Total number of transactions
+            page:
+              type: integer
+              description: Current page number
+            per_page:
+              type: integer
+              description: Number of items per page
+            total_pages:
+              type: integer
+              description: Total number of pages

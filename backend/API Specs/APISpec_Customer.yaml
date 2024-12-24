@@ -1,0 +1,332 @@
+openapi: 3.0.0
+info:
+  title: Customer API Specification
+  version: 1.0.0
+  description: Complete API specification for the customer management system, including data models and operations
+
+components:
+  schemas:
+    Customer:
+      type: object
+      required:
+        - id
+        - name
+        - email
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the customer
+        name:
+          type: string
+          description: Full name of the customer
+        email:
+          type: string
+          format: email
+          description: Email address of the customer
+        phone:
+          type: string
+          description: Phone number of the customer
+        address:
+          type: object
+          properties:
+            street:
+              type: string
+              description: Street address
+            city:
+              type: string
+              description: City
+            state:
+              type: string
+              description: State or province
+            postal_code:
+              type: string
+              description: Postal or ZIP code
+            country:
+              type: string
+              description: Country
+        notes:
+          type: string
+          description: Additional notes about the customer
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when customer was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when customer was last updated
+
+    CustomerList:
+      type: object
+      properties:
+        customers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Customer'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: Total number of customers
+            page:
+              type: integer
+              description: Current page number
+            per_page:
+              type: integer
+              description: Number of items per page
+            total_pages:
+              type: integer
+              description: Total number of pages
+
+    CustomerSummary:
+      type: object
+      properties:
+        total_customers:
+          type: integer
+          description: Total number of customers
+        active_customers:
+          type: integer
+          description: Number of active customers
+        new_customers_this_month:
+          type: integer
+          description: Number of customers added this month
+        total_invoices:
+          type: integer
+          description: Total number of invoices for all customers
+        total_revenue:
+          type: number
+          format: float
+          description: Total revenue from all customers
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+
+paths:
+  /api/customers/list_customers:
+    get:
+      summary: List all customers
+      description: Get a paginated list of customers with optional filters
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          description: Page number for pagination
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+          description: Number of items per page
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search term for customer name or email
+      responses:
+        '200':
+          description: Successfully retrieved customers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerList'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/customers/create_customer:
+    post:
+      summary: Create a new customer
+      description: Create a new customer with the given details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - email
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+                address:
+                  type: object
+                  properties:
+                    street:
+                      type: string
+                    city:
+                      type: string
+                    state:
+                      type: string
+                    postal_code:
+                      type: string
+                    country:
+                      type: string
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Customer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Invalid customer data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/customers/get_customer/{id}:
+    get:
+      summary: Get customer details
+      description: Get detailed information about a specific customer
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Customer ID
+      responses:
+        '200':
+          description: Customer found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/customers/update_customer/{id}:
+    patch:
+      summary: Update a customer
+      description: Update customer details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Customer ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+                address:
+                  type: object
+                  properties:
+                    street:
+                      type: string
+                    city:
+                      type: string
+                    state:
+                      type: string
+                    postal_code:
+                      type: string
+                    country:
+                      type: string
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Invalid customer data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/customers/delete_customer/{id}:
+    delete:
+      summary: Delete a customer
+      description: Delete a customer if they have no associated transactions
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Customer ID
+      responses:
+        '200':
+          description: Customer deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Cannot delete customer with transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/customers/summary:
+    get:
+      summary: Get customer summary
+      description: Get summary statistics for all customers
+      responses:
+        '200':
+          description: Successfully retrieved summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerSummary'
+        '400':
+          description: Error retrieving summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

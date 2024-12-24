@@ -1,0 +1,413 @@
+openapi: 3.0.0
+info:
+  title: Products and Services API
+  description: API for managing products and services in the accounting system
+  version: 1.0.0
+
+paths:
+  /api/ProdServ/create:
+    post:
+      summary: Create a new product or service
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreate'
+      responses:
+        '201':
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Product'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/ProdServ/update/{id}:
+    patch:
+      summary: Update an existing product or service
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdate'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/ProdServ/get/{id}:
+    get:
+      summary: Get a product or service by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/ProdServ/delete/{id}:
+    delete:
+      summary: Delete a product or service
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Product deleted successfully
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/ProdServ/list:
+    get:
+      summary: List all products and services with optional filters
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [inventory_item, non_inventory_item, service]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      products:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Product'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      per_page:
+                        type: integer
+                      total_pages:
+                        type: integer
+
+  /api/ProdServ/activate/{id}:
+    post:
+      summary: Activate a product or service
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product activated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/ProdServ/deactivate/{id}:
+    post:
+      summary: Deactivate a product or service
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product deactivated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    ProductCreate:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        # Basic Info
+        name:
+          type: string
+          description: Name of the product or service
+        type:
+          type: string
+          enum: [service, inventory_item, non_inventory_item]
+          description: Type of the product/service
+        sku:
+          type: string
+          description: Stock keeping unit (unique identifier)
+        category:
+          type: string
+          description: Product/service category
+        
+        # Sales Information
+        sell_enabled:
+          type: boolean
+          description: Whether this item is sold to customers
+          default: true  # Default true for service and non-inventory
+        description:
+          type: string
+          description: Sales description
+        unit_price:
+          type: number
+          format: float
+          description: Price/rate for sales
+        income_account_id:
+          type: string
+          description: ID of the income account for sales
+          default: "Sales"  # Changes to "Sales of Product Income" for inventory items
+        
+        # Purchasing Information
+        purchase_enabled:
+          type: boolean
+          description: Whether this item is purchased from vendors
+          default: false  # Default false for service and non-inventory, true for inventory
+        purchase_description:
+          type: string
+          description: Purchase description
+        purchase_cost:
+          type: number
+          format: float
+          description: Cost when purchasing from vendor
+        expense_account_id:
+          type: string
+          description: ID of the expense account for purchases
+          default: "Purchases"  # Changes to "Cost of Goods Sold" for inventory items
+        preferred_vendor_id:
+          type: string
+          description: ID of the preferred vendor
+
+        # Inventory Information (only used when type is inventory_item)
+        inventory_info:
+          type: object
+          description: Only applicable for inventory items
+          properties:
+            quantity:
+              type: number
+              format: float
+              description: Current quantity in stock
+            as_of_date:
+              type: string
+              format: date
+              description: Date of initial inventory count
+            inventory_asset_account_id:
+              type: string
+              description: ID of the inventory asset account
+              default: "Inventory Asset"
+          required:
+            - quantity
+            - as_of_date
+
+    ProductUpdate:
+      type: object
+      properties:
+        # Basic Info
+        name:
+          type: string
+        type:
+          type: string
+          enum: [service, inventory_item, non_inventory_item]
+        sku:
+          type: string
+        category:
+          type: string
+        
+        # Sales Information
+        sell_enabled:
+          type: boolean
+        description:
+          type: string
+        unit_price:
+          type: number
+          format: float
+        income_account_id:
+          type: string
+        
+        # Purchasing Information
+        purchase_enabled:
+          type: boolean
+        purchase_description:
+          type: string
+        purchase_cost:
+          type: number
+          format: float
+        expense_account_id:
+          type: string
+        preferred_vendor_id:
+          type: string
+
+        # Inventory Information
+        inventory_info:
+          type: object
+          properties:
+            quantity:
+              type: number
+              format: float
+            as_of_date:
+              type: string
+              format: date
+            inventory_asset_account_id:
+              type: string
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        # Basic Info
+        name:
+          type: string
+        type:
+          type: string
+          enum: [service, inventory_item, non_inventory_item]
+        sku:
+          type: string
+        category:
+          type: string
+        
+        # Sales Information
+        sell_enabled:
+          type: boolean
+        description:
+          type: string
+        unit_price:
+          type: number
+          format: float
+        income_account_id:
+          type: string
+        
+        # Purchasing Information
+        purchase_enabled:
+          type: boolean
+        purchase_description:
+          type: string
+        purchase_cost:
+          type: number
+          format: float
+        expense_account_id:
+          type: string
+        preferred_vendor_id:
+          type: string
+
+        # Inventory Information
+        inventory_info:
+          type: object
+          properties:
+            quantity:
+              type: number
+              format: float
+            as_of_date:
+              type: string
+              format: date
+            inventory_asset_account_id:
+              type: string
+        
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string

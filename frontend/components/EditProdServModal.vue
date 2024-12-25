@@ -135,6 +135,21 @@
             <h4 class="text-sm font-medium text-gray-700 mb-3">Inventory Information</h4>
             <div class="grid grid-cols-2 gap-4 mb-4">
               <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Cost Price</label>
+                <input
+                  v-model.number="form.cost_price"
+                  type="number"
+                  min="0"
+                  :max="form.unit_price"
+                  step="0.01"
+                  required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                />
+                <p v-if="showCostPriceError" class="mt-1 text-sm text-red-600">
+                  Cost price must be lower than unit price
+                </p>
+              </div>
+              <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
                 <input
                   v-model="form.inventory_info.quantity"
@@ -143,6 +158,8 @@
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
                 />
               </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">As of Date</label>
                 <input
@@ -151,19 +168,19 @@
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
                 />
               </div>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Inventory Asset Account</label>
-              <select
-                v-model="form.inventory_info.inventory_asset_account_id"
-                required
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-              >
-                <option value="" disabled>Select an account</option>
-                <option v-for="account in inventoryAssetAccounts" :key="account.id" :value="account.id">
-                  {{ account.name }} --- {{ account.detailType }} --- {{ account.accountType }}
-                </option>
-              </select>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Inventory Asset Account</label>
+                <select
+                  v-model="form.inventory_info.inventory_asset_account_id"
+                  required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                >
+                  <option value="" disabled>Select an account</option>
+                  <option v-for="account in inventoryAssetAccounts" :key="account.id" :value="account.id">
+                    {{ account.name }} --- {{ account.detailType }} --- {{ account.accountType }}
+                  </option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -190,7 +207,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useRuntimeConfig } from '#app'
 
@@ -231,7 +248,8 @@ const form = ref({
   name: '',
   type: '',
   sku: '',
-  unit_price: '',
+  unit_price: 0,
+  cost_price: null,
   description: '',
   sell_enabled: true,
   purchase_enabled: false,
@@ -329,12 +347,23 @@ const close = () => {
   emit('close')
 }
 
+const showCostPriceError = computed(() => {
+  return form.value.type === 'inventory_item' && 
+         form.value.cost_price !== null && 
+         form.value.cost_price >= form.value.unit_price
+})
+
 const handleSubmit = () => {
+  if (form.value.type === 'inventory_item' && showCostPriceError.value) {
+    return // Don't submit if cost price is invalid
+  }
+
   const formData = { ...form.value }
   
   // Remove inventory info if not an inventory item
   if (formData.type !== 'inventory_item') {
     delete formData.inventory_info
+    delete formData.cost_price
   }
   
   // Remove account IDs if not enabled
@@ -346,5 +375,6 @@ const handleSubmit = () => {
   }
   
   emit('update', formData)
+  close()
 }
 </script>

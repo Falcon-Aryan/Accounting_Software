@@ -67,32 +67,28 @@ def is_id_unique(id: str, products: List[Dict]) -> bool:
     """Check if an ID is unique among existing products"""
     return not any(prod.get('id') == id for prod in products)
 
-def validate_product(data: Dict) -> List[str]:
+def validate_product(data: Dict, for_update: bool = False) -> Optional[Dict]:
     """Validate product data"""
-    errors = []
+    if not for_update:
+        required_fields = ['name', 'unit_price', 'type']
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            return {'error': f'Missing required fields: {", ".join(missing_fields)}'}
     
-    # Check required fields
-    if not data.get('name'):
-        errors.append("Name is required")
-    if 'type' not in data:
-        errors.append("Type is required")
-    elif data['type'] not in ['service', 'inventory_item']:
-        errors.append("Invalid type. Must be one of: service, inventory_item")
-    
-    # Validate inventory items
+    # Validate prices
+    if 'unit_price' in data and float(data['unit_price']) < 0:
+        return {'error': 'Unit price cannot be negative'}
+        
+    # Validate cost_price for inventory items
     if data.get('type') == 'inventory_item':
-        if not data.get('inventory_info'):
-            errors.append("Inventory items require inventory information")
-        else:
-            inv_info = data['inventory_info']
-            if 'quantity' not in inv_info:
-                errors.append("Inventory items require quantity")
-            if 'as_of_date' not in inv_info:
-                errors.append("Inventory items require as_of_date")
-            if not inv_info.get('inventory_asset_account_id'):
-                errors.append("Inventory items require an inventory asset account")
-    
-    return errors
+        if 'cost_price' not in data:
+            return {'error': 'Cost price is required for inventory items'}
+        if float(data['cost_price']) < 0:
+            return {'error': 'Cost price cannot be negative'}
+        if float(data['cost_price']) >= float(data['unit_price']):
+            return {'error': 'Cost price must be lower than unit price'}
+            
+    return None
 
 def validate_account_id(account_id: str, account_type: str) -> str:
     """Validate account ID and return default if invalid"""
@@ -215,7 +211,7 @@ def create_product():
         # Validate data
         errors = validate_product(data)
         if errors:
-            return jsonify({"error": {"message": "; ".join(errors)}}), 400
+            return jsonify({"error": {"message": errors['error']}}), 400
         
         # Load existing data
         products_data = load_products()
@@ -301,7 +297,7 @@ def update_product(product_id):
         if 'type' in data:
             errors = validate_product(updated_data)
             if errors:
-                return jsonify({"error": {"message": "; ".join(errors)}}), 400
+                return jsonify({"error": {"message": errors['error']}}), 400
         
         # Set timestamps
         now = datetime.utcnow().date().isoformat()

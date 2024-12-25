@@ -9,9 +9,12 @@ A full-stack accounting software solution with a modern frontend built with Nuxt
 
 ## Features
 
-- Estimates management
-- Modern and responsive UI
-- Advanced accounting features
+- **Double-Entry Accounting**: Fully compliant double-entry accounting system
+- **Product Management**: Handle both inventory items and services
+- **Sales Flow**: Estimates → Invoices → Transactions
+- **Customer Management**: Track customer information and transactions
+- **Chart of Accounts**: Flexible chart of accounts structure
+- **Transaction Management**: Support for various transaction types
 
 ## Technology Stack
 

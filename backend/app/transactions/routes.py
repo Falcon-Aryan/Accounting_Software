@@ -6,12 +6,79 @@ from datetime import datetime
 import random
 
 from . import transactions_bp
-from .models import Transaction, TransactionEntry
+from .models import Transaction, TransactionEntry, TransactionType
 
 # File path handling
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 TRANSACTIONS_FILE = os.path.join(DATA_DIR, 'transactions.json')
+CHART_OF_ACCOUNTS_FILE = os.path.join(DATA_DIR, 'chart_of_accounts.json')
+
+def get_default_accounts() -> Dict[str, str]:
+    """Get default account IDs from chart of accounts"""
+    try:
+        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+            chart_data = json.load(f)
+            accounts = chart_data.get('accounts', [])
+            
+            # Find Accounts Receivable account
+            accounts_receivable = next(
+                (acc['id'] for acc in accounts 
+                if acc['accountType'] == 'Accounts Receivable' 
+                and acc['isDefault'] 
+                and acc['active']),
+                None
+            )
+            
+            # Find Sales Revenue account
+            sales_revenue = next(
+                (acc['id'] for acc in accounts 
+                if acc['accountType'] == 'Income'
+                and acc['name'] == 'Sales Revenue'
+                and acc['isDefault'] 
+                and acc['active']),
+                None
+            )
+            
+            # Find COGS account
+            cogs = next(
+                (acc['id'] for acc in accounts 
+                if acc['accountType'] == 'Cost of Goods Sold'
+                and acc['isDefault'] 
+                and acc['active']),
+                None
+            )
+            
+            # Find Inventory Asset account
+            inventory_asset = next(
+                (acc['id'] for acc in accounts 
+                if acc['accountType'] == 'Other Current Asset'
+                and acc['detailType'] == 'Inventory'
+                and acc['isDefault'] 
+                and acc['active']),
+                None
+            )
+            
+            if not accounts_receivable or not sales_revenue or not cogs or not inventory_asset:
+                raise Exception("Required default accounts not found in chart of accounts")
+                
+            return {
+                'accounts_receivable': accounts_receivable,
+                'sales_revenue': sales_revenue,
+                'cogs': cogs,
+                'inventory_asset': inventory_asset
+            }
+    except Exception as e:
+        print(f"Error loading default accounts: {str(e)}")
+        return {
+            'accounts_receivable': '1100-0001',  # Fallback Accounts Receivable
+            'sales_revenue': '4000-0001',        # Fallback Sales Revenue
+            'cogs': '5000-0001',                 # Fallback COGS
+            'inventory_asset': '1200-0001'       # Fallback Inventory Asset
+        }
+
+# Get default accounts
+DEFAULT_ACCOUNTS = get_default_accounts()
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -43,6 +110,11 @@ def save_transactions(data: Dict) -> bool:
 def create_transaction_direct(transaction_data: dict):
     """Create a new transaction directly from code (not via HTTP)"""
     try:
+        # Load chart of accounts to get account names
+        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+            chart_data = json.load(f)
+            accounts_map = {acc['id']: acc['name'] for acc in chart_data.get('accounts', [])}
+
         # Generate transaction ID
         transaction_id = generate_transaction_id()
         
@@ -55,6 +127,70 @@ def create_transaction_direct(transaction_data: dict):
         # Add metadata
         transaction_data['id'] = transaction_id
         transaction_data['status'] = transaction_data.get('status', 'draft')
+        
+        # Get transaction details
+        amount = float(transaction_data.get('amount', 0.0))  # Ensure float conversion
+        description = transaction_data.get('description', 'Transaction')
+        
+        # Get product info
+        products = transaction_data.get('products', [])
+        if not products:
+            raise ValueError("No products provided for transaction")
+            
+        product = products[0]  # Get first product
+        product_type = product.get('type', 'service')
+        
+        # Calculate cost amount for inventory items
+        cost_amount = 0.0
+        if product_type == 'inventory_item':
+            # Load products data to get cost price
+            with open(os.path.join(DATA_DIR, 'products.json'), 'r') as f:
+                products_data = json.load(f)
+                products_map = {p['id']: p for p in products_data.get('products', [])}
+                
+            if product.get('id') in products_map:
+                product_info = products_map[product['id']]
+                cost_price = float(product_info.get('cost_price', 0.0))
+                quantity = float(product.get('quantity', 0.0))
+                cost_amount = cost_price * quantity
+        
+        # Create entries based on product type
+        entries = []
+        
+        # Revenue entries (common for both types)
+        entries.extend([
+            {
+                'accountId': DEFAULT_ACCOUNTS['accounts_receivable'],
+                'amount': amount,
+                'type': 'debit',
+                'description': f"{description} - Revenue ({accounts_map.get(DEFAULT_ACCOUNTS['accounts_receivable'], 'Accounts Receivable')})"
+            },
+            {
+                'accountId': DEFAULT_ACCOUNTS['sales_revenue'],
+                'amount': amount,
+                'type': 'credit',
+                'description': f"{description} - Revenue ({accounts_map.get(DEFAULT_ACCOUNTS['sales_revenue'], 'Sales Revenue')})"
+            }
+        ])
+        
+        # Add COGS entries for inventory items
+        if product_type == 'inventory_item' and cost_amount > 0:
+            entries.extend([
+                {
+                    'accountId': DEFAULT_ACCOUNTS['cogs'],
+                    'amount': cost_amount,
+                    'type': 'debit',
+                    'description': f"{description} - Cost of Goods Sold ({accounts_map.get(DEFAULT_ACCOUNTS['cogs'], 'Cost of Goods Sold')})"
+                },
+                {
+                    'accountId': DEFAULT_ACCOUNTS['inventory_asset'],
+                    'amount': cost_amount,
+                    'type': 'credit',
+                    'description': f"{description} - Inventory Reduction ({accounts_map.get(DEFAULT_ACCOUNTS['inventory_asset'], 'Inventory Asset')})"
+                }
+            ])
+        
+        transaction_data['entries'] = entries
         
         # Create and validate transaction
         transaction = Transaction.from_dict(transaction_data)

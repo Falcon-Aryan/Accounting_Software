@@ -1,52 +1,41 @@
 {
   "products": [
     {
-      "id": "9866-5784",
-      "name": "inv test",
+      "id": "8571-4401",
+      "name": "inv item",
       "type": "inventory_item",
       "sell_enabled": true,
       "income_account_id": "4000-0001",
       "purchase_enabled": true,
-      "created_at": "2024-12-24T16:28:38.627997",
-      "updated_at": "2024-12-24T16:28:38.627997",
+      "created_at": "2024-12-25",
+      "updated_at": "2024-12-25",
       "expense_account_id": "5000-0001",
-      "sku": "9866-5784",
-      "unit_price": 100.0,
+      "sku": "8571-4401",
+      "unit_price": 500.0,
+      "cost_price": 300.0,
       "inventory_info": {
-        "quantity": 100.0,
-        "as_of_date": "2024-12-24",
+        "quantity": 20.0,
+        "as_of_date": "2024-12-25",
         "inventory_asset_account_id": "1200-0001"
       }
     },
     {
-      "id": "9180-8031",
-      "name": "service",
+      "id": "2598-3420",
+      "name": "service type",
       "type": "service",
       "sell_enabled": true,
       "income_account_id": "4000-0001",
       "purchase_enabled": true,
-      "created_at": "2024-12-24T16:28:56.064809",
-      "updated_at": "2024-12-24T16:28:56.064809",
-      "expense_account_id": "6004-0001",
-      "sku": "9180-8031",
-      "unit_price": 150.0
-    },
-    {
-      "id": "1352-4995",
-      "name": "serv w/out purchase",
-      "type": "service",
-      "sell_enabled": true,
-      "income_account_id": "4100-0001",
-      "purchase_enabled": false,
-      "created_at": "2024-12-24T16:29:35.312019",
-      "updated_at": "2024-12-24T16:29:35.312019",
-      "sku": "1352-4995",
-      "unit_price": 50.0
+      "created_at": "2024-12-25",
+      "updated_at": "2024-12-25",
+      "expense_account_id": "6002-0001",
+      "sku": "2598-3420",
+      "unit_price": 500.0
     }
   ],
   "summary": {
-    "total_count": 3,
-    "service_count": 2,
+    "total_count": 2,
+    "service_count": 1,
     "inventory_count": 1
   }
 }

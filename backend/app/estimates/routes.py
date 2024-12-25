@@ -148,28 +148,44 @@ def create_estimate():
         # Process products with full product info
         processed_products = []
         for product in data.get('products', []):
-            # Get full product info
+            # Get full product info if ID exists
             product_info = products_map.get(product.get('id'))
-            if not product_info:
-                raise ValueError(f"Product {product.get('id')} not found")
-                
-            # Create product entry with all details from product_info
-            estimate_product = {
-                'id': product_info['id'],
-                'name': product_info['name'],
-                'description': product_info.get('description', ''),  
-                'price': float(product.get('price', product_info['unit_price'])),
-                'quantity': float(product.get('quantity', 1)),
-                'type': product_info['type'],
-                'sell_enabled': product_info['sell_enabled'],
-                'purchase_enabled': product_info['purchase_enabled'],
-                'income_account_id': product_info.get('income_account_id'),
-                'expense_account_id': product_info.get('expense_account_id')
-            }
             
-            # Add inventory info if present
-            if 'inventory_info' in product_info:
-                estimate_product['inventory_info'] = product_info['inventory_info']
+            if product_info:
+                # Use existing product info
+                estimate_product = {
+                    'id': product_info['id'],
+                    'name': product_info['name'],
+                    'description': product_info.get('description', ''),  
+                    'price': float(product.get('price', product_info['unit_price'])),
+                    'cost_price': float(product_info.get('cost_price', product_info.get('cost_price', 0))),
+                    'quantity': float(product.get('quantity', 1)),
+                    'type': product_info['type'],
+                    'sell_enabled': product_info['sell_enabled'],
+                    'purchase_enabled': product_info['purchase_enabled'],
+                    'income_account_id': product_info.get('income_account_id'),
+                    'expense_account_id': product_info.get('expense_account_id')
+                }
+                
+                # Add inventory info if present
+                if 'inventory_info' in product_info:
+                    estimate_product['inventory_info'] = product_info['inventory_info']
+            else:
+                # Handle product without ID (new product)
+                product_type = product.get('type', 'service')
+                estimate_product = {
+                    'id': product.get('id', ''),
+                    'name': product['name'],
+                    'description': product.get('description', ''),
+                    'price': float(product.get('price', 0)),
+                    'cost_price': float(product.get('cost_price', 0)),
+                    'quantity': float(product.get('quantity', 1)),
+                    'type': product_type,
+                    'sell_enabled': product.get('sell_enabled', True),
+                    'purchase_enabled': product.get('purchase_enabled', False),
+                    'income_account_id': product.get('income_account_id', SALES_REVENUE_ID),
+                    'expense_account_id': COGS_ID if product_type == 'inventory_item' else None
+                }
                 
             processed_products.append(estimate_product)
             
@@ -356,40 +372,41 @@ def convert_to_invoice(id):
         # Create invoice data
         invoice_data = {
             'customer_name': estimate['customer_name'],
-            'products': [],
+            'customer_id': estimate.get('customer_id'),
+            'products': [
+                {
+                    'id': product.get('id', ''),
+                    'name': product['name'],
+                    'description': product.get('description', ''),
+                    'price': float(product['price']),
+                    'cost_price': float(product.get('cost_price', 0)),
+                    'quantity': float(product['quantity']),
+                    'type': product.get('type', ''),
+                    'sell_enabled': product.get('sell_enabled', True),
+                    'purchase_enabled': product.get('purchase_enabled', False),
+                    'income_account_id': product.get('income_account_id'),
+                    'expense_account_id': product.get('expense_account_id')
+                }
+                for product in estimate['products']
+            ],
             'payment_terms': estimate.get('payment_terms', 'due_on_receipt'),
             'status': 'draft',
             'payments': [],
             'last_payment_date': None
         }
         
+        # Calculate total amount
+        total_amount = sum(
+            float(product['price']) * float(product['quantity'])
+            for product in invoice_data['products']
+        )
+        invoice_data['total_amount'] = total_amount
+        invoice_data['balance_due'] = total_amount
+        
         # Set dates
         invoice_date = datetime.utcnow().date().isoformat()
         invoice_data['invoice_date'] = invoice_date
         invoice_data['due_date'] = calculate_due_date(invoice_date, invoice_data['payment_terms'])
-        
-        # Copy products directly from estimate
-        total_amount = 0
-        for product in estimate['products']:
-            # Copy all product data
-            invoice_product = product.copy()
-            
-            # Get product ID from products.json
-            products_data = load_products()
-            product_info = next((p for p in products_data['products'] if p['name'] == product['name']), None)
-            if product_info:
-                invoice_product['id'] = product_info['id']
-            
-            # Calculate total
-            product_total = float(product['price']) * float(product['quantity'])
-            invoice_product['total'] = product_total
-            total_amount += product_total
-            
-            invoice_data['products'].append(invoice_product)
-            
-        # Set total amounts
-        invoice_data['total_amount'] = total_amount
-        invoice_data['balance_due'] = total_amount
         
         # Load invoices
         invoices_data = load_invoices()

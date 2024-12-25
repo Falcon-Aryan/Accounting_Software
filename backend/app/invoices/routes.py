@@ -12,6 +12,7 @@ from app.transactions.models import Transaction, TransactionType, TransactionEnt
 from app.chart_of_accounts.models import Account
 from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions
 from app.chart_of_accounts.routes import load_chart_of_accounts
+from app.products.routes import load_products
 
 # File path handling
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -96,12 +97,9 @@ def update_summary(invoices: List[Dict]) -> InvoicesSummary:
         if invoice['status'] == 'draft':
             summary.draft_count += 1
             summary.draft_amount += balance_due
-        elif invoice['status'] == 'sent':
-            summary.sent_count += 1
-            summary.sent_amount += balance_due
-        elif invoice['status'] == 'partially_paid':
-            summary.partially_paid_count += 1
-            summary.partially_paid_amount += balance_due
+        elif invoice['status'] == 'posted':
+            summary.posted_count += 1
+            summary.posted_amount += balance_due
         elif invoice['status'] == 'paid':
             summary.paid_count += 1
             summary.paid_amount += invoice['total_amount']  # Use total amount for historical tracking
@@ -110,6 +108,7 @@ def update_summary(invoices: List[Dict]) -> InvoicesSummary:
             summary.overdue_amount += balance_due
         elif invoice['status'] == 'void':
             summary.void_count += 1
+            summary.void_amount += balance_due
             
         # Update payment tracking
         if invoice['status'] not in ['paid', 'cancelled', 'void']:
@@ -233,34 +232,37 @@ def create_invoice():
     try:
         data = request.get_json()
         
+        # Load invoice data
+        invoices_data = load_invoices()
+        
         # Generate invoice ID and number
         invoice_id = generate_invoice_id()
-        while not is_id_unique(invoice_id, load_invoices().get('invoices', [])):
+        while not is_id_unique(invoice_id, invoices_data['invoices']):
             invoice_id = generate_invoice_id()
             
         data['id'] = invoice_id
         data['invoice_no'] = get_next_invoice_number()
         
-        # Add required fields
+        # Set dates and status
+        data['invoice_date'] = data.get('invoice_date', datetime.utcnow().date().isoformat())
+        data['due_date'] = data.get('due_date') or calculate_due_date(data.get('invoice_date'), data.get('payment_terms', 'due_on_receipt'))
+        data['created_at'] = datetime.utcnow().isoformat()
+        data['updated_at'] = data['created_at']
+        data['status'] = data.get('status', 'draft')  # Default to draft
         data['payments'] = []
         data['last_payment_date'] = None
         
-        # Set dates
-        data['invoice_date'] = data.get('invoice_date', datetime.utcnow().date().isoformat())
-        data['due_date'] = data.get('due_date') or calculate_due_date(data.get('invoice_date'), data.get('payment_terms', 'due_on_receipt'))
-        data['created_at'] = datetime.utcnow().date().isoformat()
-        data['updated_at'] = data['created_at']
-        data['status'] = data.get('status', 'draft')
+        # Calculate total amount and balance due
+        total_amount = sum(float(product.get('price', 0)) * float(product.get('quantity', 0)) 
+                          for product in data.get('products', []))
+        data['total_amount'] = total_amount
+        data['balance_due'] = total_amount
         
         # Create invoice object and validate
         invoice = Invoice.from_dict(data)
         
-        # Save invoice
-        invoices_data = load_invoices()
-        invoices_data['invoices'].append(invoice.to_dict())
-        
-        # Create initial transaction when invoice is not draft
-        if data.get('status') != 'draft':
+        # Create transaction only if status is posted
+        if data['status'] == 'posted':
             # Validate products are enabled for sales
             for product in data['products']:
                 if not product.get('sell_enabled', True):
@@ -268,72 +270,32 @@ def create_invoice():
                 if float(product.get('quantity', 0)) <= 0:
                     raise ValueError(f"Product {product.get('name')} has invalid quantity")
 
-            # Group products by income accounts for consolidated entries
-            income_totals = {}
-            total_amount = 0
-            
+            # Load products data to get cost prices
+            products_data = load_products()
+            products_map = {p['id']: p for p in products_data.get('products', [])}
+
+            # Create transaction entries
             for product in data['products']:
-                # Validate income account ID
-                income_account = validate_account_id(
-                    product.get('income_account_id', SALES_REVENUE_ID),
-                    'income'
-                )
+                product_type = product.get('type', 'service')
+                amount = float(product.get('price', 0)) * float(product.get('quantity', 0))
                 
-                amount = float(product['price']) * float(product['quantity'])
-                if amount <= 0:
-                    raise ValueError(f"Product {product.get('name')} has invalid amount")
-                    
-                total_amount += amount
-                income_totals[income_account] = income_totals.get(income_account, 0) + amount
-
-            # Validate AR account
-            ar_account = validate_account_id(ACCOUNTS_RECEIVABLE_ID, 'asset')
-            if not ar_account:
-                raise ValueError("Invalid Accounts Receivable account")
-
-            if total_amount <= 0:
-                raise ValueError("Invoice total amount must be greater than zero")
-
-            # Create sales transaction entries
-            sales_entries = [
-                # First entry is always Accounts Receivable debit
-                {
-                    'accountId': ar_account,
-                    'amount': total_amount,
-                    'type': 'debit',
-                    'description': f"Accounts Receivable - Invoice {data['invoice_no']}"
+                # Create transaction
+                transaction_data = {
+                    'date': data['invoice_date'],
+                    'description': f"Invoice {data['invoice_no']} created",
+                    'transaction_type': TransactionType.INVOICE.value,
+                    'reference_type': 'invoice',
+                    'reference_id': invoice_id,
+                    'status': 'posted',
+                    'customer_name': data['customer_name'],
+                    'products': [product],
+                    'amount': amount
                 }
-            ]
-
-            # Add credit entries for each income account
-            credit_total = 0
-            for account_id, amount in income_totals.items():
-                sales_entries.append({
-                    'accountId': account_id,
-                    'amount': amount,
-                    'type': 'credit',
-                    'description': f"Sales Revenue - Invoice {data['invoice_no']}"
-                })
-                credit_total += amount
-
-            # Validate debits equal credits
-            if abs(total_amount - credit_total) > 0.01:  # Using 0.01 to handle floating point precision
-                raise ValueError("Transaction debits do not equal credits")
-
-            # Create the sales transaction
-            sales_transaction = {
-                'date': data['invoice_date'],
-                'description': f"Invoice {data['invoice_no']} created",
-                'transaction_type': TransactionType.INVOICE.value,
-                'reference_type': 'invoice',
-                'reference_id': invoice_id,
-                'status': 'posted',
-                'customer_name': data['customer_name'],
-                'products': data['products'],
-                'entries': sales_entries
-            }
-            create_transaction_direct(sales_transaction)
-            
+                create_transaction_direct(transaction_data)
+        
+        # Save invoice
+        invoices_data['invoices'].append(invoice.to_dict())
+        
         # Update summary
         invoices_data['summary'] = update_summary(invoices_data['invoices']).to_dict()
         
@@ -393,72 +355,25 @@ def update_invoice(id):
                     if float(product.get('quantity', 0)) <= 0:
                         raise ValueError(f"Product {product.get('name')} has invalid quantity")
 
-                # Group products by income accounts for consolidated entries
-                income_totals = {}
-                total_amount = 0
-                
+                # Create transaction entries
                 for product in invoice['products']:
-                    # Validate income account ID
-                    income_account = validate_account_id(
-                        product.get('income_account_id', SALES_REVENUE_ID),
-                        'income'
-                    )
+                    product_type = product.get('type', 'service')
+                    amount = float(product.get('price', 0)) * float(product.get('quantity', 0))
                     
-                    amount = float(product['price']) * float(product['quantity'])
-                    if amount <= 0:
-                        raise ValueError(f"Product {product.get('name')} has invalid amount")
-                        
-                    total_amount += amount
-                    income_totals[income_account] = income_totals.get(income_account, 0) + amount
-
-                # Validate AR account
-                ar_account = validate_account_id(ACCOUNTS_RECEIVABLE_ID, 'asset')
-                if not ar_account:
-                    raise ValueError("Invalid Accounts Receivable account")
-
-                if total_amount <= 0:
-                    raise ValueError("Invoice total amount must be greater than zero")
-
-                # Create sales transaction entries
-                sales_entries = [
-                    # First entry is always Accounts Receivable debit
-                    {
-                        'accountId': ar_account,
-                        'amount': total_amount,
-                        'type': 'debit',
-                        'description': f"Accounts Receivable - Invoice {invoice['invoice_no']}"
+                    # Create transaction
+                    transaction_data = {
+                        'date': invoice['invoice_date'],
+                        'description': f"Invoice {invoice['invoice_no']} created",
+                        'transaction_type': TransactionType.INVOICE.value,
+                        'reference_type': 'invoice',
+                        'reference_id': id,
+                        'status': 'posted',
+                        'customer_name': invoice['customer_name'],
+                        'products': [product],
+                        'amount': amount
                     }
-                ]
-
-                # Add credit entries for each income account
-                credit_total = 0
-                for account_id, amount in income_totals.items():
-                    sales_entries.append({
-                        'accountId': account_id,
-                        'amount': amount,
-                        'type': 'credit',
-                        'description': f"Sales Revenue - Invoice {invoice['invoice_no']}"
-                    })
-                    credit_total += amount
-
-                # Validate debits equal credits
-                if abs(total_amount - credit_total) > 0.01:  # Using 0.01 to handle floating point precision
-                    raise ValueError("Transaction debits do not equal credits")
-
-                # Create the sales transaction
-                sales_transaction = {
-                    'date': invoice['invoice_date'],
-                    'description': f"Invoice {invoice['invoice_no']} created",
-                    'transaction_type': TransactionType.INVOICE.value,
-                    'reference_type': 'invoice',
-                    'reference_id': id,
-                    'status': 'posted',
-                    'customer_name': invoice['customer_name'],
-                    'products': invoice['products'],
-                    'entries': sales_entries
-                }
-                create_transaction_direct(sales_transaction)
-                
+                    create_transaction_direct(transaction_data)
+        
             # Case 2: Amount changed on active invoice - modify existing transaction
             elif amount_changed and old_status != 'draft':
                 # Load existing transactions

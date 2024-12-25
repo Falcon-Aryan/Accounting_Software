@@ -42,6 +42,7 @@ class Product:
     sell_enabled: bool = True
     description: Optional[str] = None
     unit_price: float = 0.0
+    cost_price: Optional[float] = None
     income_account_id: str = "4000-0001"  # Default Sales Revenue ID
     
     # Purchasing Information
@@ -88,6 +89,7 @@ class Product:
             sell_enabled=sell_enabled,
             description=data.get('description'),
             unit_price=float(data.get('unit_price', 0.0)),
+            cost_price=float(data.get('cost_price', 0.0)) if data.get('cost_price') is not None else None,
             income_account_id=income_account_id,
             purchase_enabled=purchase_enabled,
             purchase_description=data.get('purchase_description'),
@@ -125,6 +127,8 @@ class Product:
             data['description'] = self.description
         if self.unit_price:
             data['unit_price'] = self.unit_price
+        if self.cost_price is not None:
+            data['cost_price'] = self.cost_price
         if self.purchase_description:
             data['purchase_description'] = self.purchase_description
         if self.purchase_cost:

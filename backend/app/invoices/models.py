@@ -19,6 +19,7 @@ class Product:
     name: str
     description: str
     price: float
+    cost_price: Optional[float] = None
     quantity: float = 1.0
     type: str = ''
     sell_enabled: bool = True
@@ -39,6 +40,7 @@ class Product:
             name=data.get('name', ''),
             description=data.get('description', ''),
             price=float(data.get('price', 0.0)),
+            cost_price=float(data.get('cost_price')) if data.get('cost_price') is not None else None,
             quantity=float(data.get('quantity', 1.0)),
             type=data.get('type', ''),
             sell_enabled=data.get('sell_enabled', True),
@@ -50,7 +52,7 @@ class Product:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert Product instance to dictionary"""
-        return {
+        data = {
             'id': self.id,
             'name': self.name,
             'description': self.description,
@@ -63,6 +65,9 @@ class Product:
             'expense_account_id': self.expense_account_id,
             'total': self.total
         }
+        if self.cost_price is not None:
+            data['cost_price'] = self.cost_price
+        return data
 
 @dataclass
 class Payment:
@@ -188,44 +193,34 @@ class Invoice:
 @dataclass
 class InvoicesSummary:
     """Summary information about invoices"""
-    # Counts by status
     draft_count: int = 0
     posted_count: int = 0
     paid_count: int = 0
     overdue_count: int = 0
     cancelled_count: int = 0
     void_count: int = 0
-    
-    # Amounts by status
     draft_amount: float = 0.0
     posted_amount: float = 0.0
     paid_amount: float = 0.0
     overdue_amount: float = 0.0
     void_amount: float = 0.0
-    
-    # Payment tracking
-    total_receivable: float = 0.0  # Total amount still to be collected (excludes paid and cancelled)
-    total_collected: float = 0.0   # Total amount collected so far
-    
+    total_receivable: float = 0.0
+    total_collected: float = 0.0
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert InvoicesSummary instance to dictionary"""
         return {
-            # Counts
             'draft_count': self.draft_count,
             'posted_count': self.posted_count,
             'paid_count': self.paid_count,
             'overdue_count': self.overdue_count,
             'cancelled_count': self.cancelled_count,
             'void_count': self.void_count,
-            
-            # Amounts
             'draft_amount': self.draft_amount,
             'posted_amount': self.posted_amount,
             'paid_amount': self.paid_amount,
             'overdue_amount': self.overdue_amount,
             'void_amount': self.void_amount,
-            
-            # Payment tracking
             'total_receivable': self.total_receivable,
             'total_collected': self.total_collected
         }

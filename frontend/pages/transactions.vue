@@ -258,6 +258,15 @@ function formatAmount(amount) {
 
 // Calculate total amount
 function getTotalAmount(transaction) {
+  // For invoice transactions, use the amount from Accounts Receivable entry
+  if (transaction.transaction_type === 'invoice') {
+    const arEntry = transaction.entries.find(entry => 
+      entry.type === 'debit' && entry.description.toLowerCase().includes('accounts receivable')
+    )
+    return arEntry ? arEntry.amount : 0
+  }
+  
+  // For other transactions, sum up all debit entries
   return transaction.entries.reduce((total, entry) => {
     return total + (entry.type === 'debit' ? entry.amount : 0)
   }, 0)

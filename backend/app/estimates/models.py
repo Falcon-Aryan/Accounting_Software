@@ -11,6 +11,7 @@ class Product:
     name: str
     description: Optional[str] = ''
     price: float = 0.0
+    cost_price: Optional[float] = None
     quantity: int = 1
     type: str = 'service'
     sell_enabled: bool = True
@@ -25,6 +26,7 @@ class Product:
             name=data.get('name', ''),
             description=data.get('description', ''),
             price=float(data.get('price', 0.0)),
+            cost_price=float(data.get('cost_price')) if data.get('cost_price') is not None else None,
             quantity=int(data.get('quantity', 1)),
             type=data.get('type', 'service'),
             sell_enabled=data.get('sell_enabled', True),
@@ -42,12 +44,12 @@ class Product:
             'quantity': self.quantity,
             'type': self.type,
             'sell_enabled': self.sell_enabled,
-            'purchase_enabled': self.purchase_enabled
+            'purchase_enabled': self.purchase_enabled,
+            'income_account_id': self.income_account_id,
+            'expense_account_id': self.expense_account_id
         }
-        if self.income_account_id:
-            data['income_account_id'] = self.income_account_id
-        if self.expense_account_id:
-            data['expense_account_id'] = self.expense_account_id
+        if self.cost_price is not None:
+            data['cost_price'] = self.cost_price
         return data
 
 @dataclass

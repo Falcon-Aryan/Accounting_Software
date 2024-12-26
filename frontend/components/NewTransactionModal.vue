@@ -195,15 +195,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useToast } from 'vue-toastification'
-import { api } from '../utils/api'
 
 const props = defineProps({
   isOpen: Boolean
 })
 
 const emit = defineEmits(['close', 'save'])
-const toast = useToast()
 
 const errorMessage = ref('')
 const accounts = ref([])
@@ -252,7 +249,6 @@ const loadAccounts = async () => {
     const response = await api.get('/chart-of-accounts/list')
     accounts.value = response.data
   } catch (error) {
-    toast.error('Failed to load accounts')
     console.error('Error loading accounts:', error)
   }
 }
@@ -283,8 +279,6 @@ const addDualEntry = () => {
 const removeDualEntry = (index) => {
   if (formData.value.entries.length > 2) {
     formData.value.entries.splice(index, 2)
-  } else {
-    toast.warning('Transaction must have at least two entries')
   }
 }
 
@@ -304,16 +298,13 @@ const validateTransaction = async () => {
     if (response.data.is_valid) {
       isValid.value = true
       errorMessage.value = ''
-      toast.success('Transaction is valid')
     } else {
       isValid.value = false
       errorMessage.value = response.data.error
-      toast.error('Transaction validation failed')
     }
   } catch (error) {
     isValid.value = false
     errorMessage.value = 'Failed to validate transaction'
-    toast.error('Failed to validate transaction')
     console.error('Error validating transaction:', error)
   }
 }

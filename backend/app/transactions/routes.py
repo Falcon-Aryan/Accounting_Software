@@ -8,11 +8,14 @@ import random
 from . import transactions_bp
 from .models import Transaction, TransactionEntry, TransactionType
 
-# File path handling
+# File paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 TRANSACTIONS_FILE = os.path.join(DATA_DIR, 'transactions.json')
 CHART_OF_ACCOUNTS_FILE = os.path.join(DATA_DIR, 'chart_of_accounts.json')
+
+# Ensure data directory exists
+os.makedirs(DATA_DIR, exist_ok=True)
 
 def get_default_accounts() -> Dict[str, str]:
     """Get default account IDs from chart of accounts"""
@@ -80,9 +83,6 @@ def get_default_accounts() -> Dict[str, str]:
 # Get default accounts
 DEFAULT_ACCOUNTS = get_default_accounts()
 
-# Ensure data directory exists
-os.makedirs(DATA_DIR, exist_ok=True)
-
 def generate_transaction_id() -> str:
     """Generate a random transaction ID"""
     return f"TXN-{random.randint(10000, 99999)}"
@@ -128,69 +128,76 @@ def create_transaction_direct(transaction_data: dict):
         transaction_data['id'] = transaction_id
         transaction_data['status'] = transaction_data.get('status', 'draft')
         
-        # Get transaction details
-        amount = float(transaction_data.get('amount', 0.0))  # Ensure float conversion
-        description = transaction_data.get('description', 'Transaction')
-        
-        # Get product info
-        products = transaction_data.get('products', [])
-        if not products:
-            raise ValueError("No products provided for transaction")
+        # If entries are not provided, create them
+        if not transaction_data.get('entries'):
+            # Get transaction details
+            amount = float(transaction_data.get('amount', 0.0))  # Ensure float conversion
+            description = transaction_data.get('description', 'Transaction')
             
-        product = products[0]  # Get first product
-        product_type = product.get('type', 'service')
-        
-        # Calculate cost amount for inventory items
-        cost_amount = 0.0
-        if product_type == 'inventory_item':
-            # Load products data to get cost price
-            with open(os.path.join(DATA_DIR, 'products.json'), 'r') as f:
-                products_data = json.load(f)
-                products_map = {p['id']: p for p in products_data.get('products', [])}
+            # Get product info
+            products = transaction_data.get('products', [])
+            if not products:
+                raise ValueError("No products provided for transaction")
                 
-            if product.get('id') in products_map:
-                product_info = products_map[product['id']]
-                cost_price = float(product_info.get('cost_price', 0.0))
-                quantity = float(product.get('quantity', 0.0))
-                cost_amount = cost_price * quantity
-        
-        # Create entries based on product type
-        entries = []
-        
-        # Revenue entries (common for both types)
-        entries.extend([
-            {
-                'accountId': DEFAULT_ACCOUNTS['accounts_receivable'],
-                'amount': amount,
-                'type': 'debit',
-                'description': f"{description} - Revenue ({accounts_map.get(DEFAULT_ACCOUNTS['accounts_receivable'], 'Accounts Receivable')})"
-            },
-            {
-                'accountId': DEFAULT_ACCOUNTS['sales_revenue'],
-                'amount': amount,
-                'type': 'credit',
-                'description': f"{description} - Revenue ({accounts_map.get(DEFAULT_ACCOUNTS['sales_revenue'], 'Sales Revenue')})"
-            }
-        ])
-        
-        # Add COGS entries for inventory items
-        if product_type == 'inventory_item' and cost_amount > 0:
+            product = products[0]  # Get first product
+            product_type = product.get('type', 'service')
+            
+            # Calculate cost amount for inventory items
+            cost_amount = 0.0
+            if product_type == 'inventory_item':
+                # Load products data to get cost price
+                with open(os.path.join(DATA_DIR, 'products.json'), 'r') as f:
+                    products_data = json.load(f)
+                    products_map = {p['id']: p for p in products_data.get('products', [])}
+                    
+                if product.get('id') in products_map:
+                    product_info = products_map[product['id']]
+                    cost_price = float(product_info.get('cost_price', 0.0))
+                    quantity = float(product.get('quantity', 0.0))
+                    cost_amount = cost_price * quantity
+            
+            # Create entries based on product type
+            entries = []
+            
+            # Revenue entries (common for both types)
             entries.extend([
                 {
-                    'accountId': DEFAULT_ACCOUNTS['cogs'],
-                    'amount': cost_amount,
+                    'accountId': DEFAULT_ACCOUNTS['accounts_receivable'],
+                    'amount': amount,
                     'type': 'debit',
-                    'description': f"{description} - Cost of Goods Sold ({accounts_map.get(DEFAULT_ACCOUNTS['cogs'], 'Cost of Goods Sold')})"
+                    'description': f"{description} - Revenue ({accounts_map.get(DEFAULT_ACCOUNTS['accounts_receivable'], 'Accounts Receivable')})"
                 },
                 {
-                    'accountId': DEFAULT_ACCOUNTS['inventory_asset'],
-                    'amount': cost_amount,
+                    'accountId': DEFAULT_ACCOUNTS['sales_revenue'],
+                    'amount': amount,
                     'type': 'credit',
-                    'description': f"{description} - Inventory Reduction ({accounts_map.get(DEFAULT_ACCOUNTS['inventory_asset'], 'Inventory Asset')})"
+                    'description': f"{description} - Revenue ({accounts_map.get(DEFAULT_ACCOUNTS['sales_revenue'], 'Sales Revenue')})"
                 }
             ])
+            
+            # Add COGS entries for inventory items
+            if product_type == 'inventory_item' and cost_amount > 0:
+                entries.extend([
+                    {
+                        'accountId': DEFAULT_ACCOUNTS['cogs'],
+                        'amount': cost_amount,
+                        'type': 'debit',
+                        'description': f"{description} - Cost of Goods Sold ({accounts_map.get(DEFAULT_ACCOUNTS['cogs'], 'Cost of Goods Sold')})"
+                    },
+                    {
+                        'accountId': DEFAULT_ACCOUNTS['inventory_asset'],
+                        'amount': cost_amount,
+                        'type': 'credit',
+                        'description': f"{description} - Inventory Reduction ({accounts_map.get(DEFAULT_ACCOUNTS['inventory_asset'], 'Inventory Asset')})"
+                    }
+                ])
+            
+            transaction_data['entries'] = entries
         
-        transaction_data['entries'] = entries
+        # Add account names to entries if not present
+        for entry in transaction_data['entries']:
+            if not entry.get('accountName'):
+                entry['accountName'] = accounts_map.get(entry['accountId'], '')
         
         # Create and validate transaction
         transaction = Transaction.from_dict(transaction_data)
@@ -209,6 +216,144 @@ def create_transaction_direct(transaction_data: dict):
     except Exception as e:
         print(f"Error in create_transaction_direct: {str(e)}")
         raise
+
+def validate_transaction_accounts(transaction_type: str, sub_type: str, entries: List[Dict]) -> tuple[bool, str]:
+    """Validate if the accounts used in the transaction are appropriate for the transaction type"""
+    try:
+        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+            chart_data = json.load(f)
+            accounts = {acc['id']: acc for acc in chart_data.get('accounts', [])}
+        
+        # Verify all accounts exist and are active
+        for entry in entries:
+            account_id = entry.get('accountId')
+            if account_id not in accounts:
+                return False, f"Account {account_id} not found"
+            if not accounts[account_id].get('active', True):
+                return False, f"Account {account_id} is inactive"
+        
+        # Validate account types based on transaction type
+        valid_account_types = get_valid_account_types(transaction_type, sub_type)
+        
+        for entry in entries:
+            account = accounts[entry['accountId']]
+            if account['accountType'] not in valid_account_types:
+                return False, f"Account type {account['accountType']} is not valid for {transaction_type} transactions"
+        
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+def get_valid_account_types(transaction_type: str, sub_type: str) -> List[str]:
+    """Get valid account types for a transaction type"""
+    valid_types = {
+        'sale': ['Accounts Receivable', 'Income', 'Bank', 'Other Current Asset'],
+        'purchase': ['Accounts Payable', 'Other Current Asset', 'Expense', 'Bank'],
+        'payment_received': ['Bank', 'Accounts Receivable'],
+        'payment_made': ['Bank', 'Accounts Payable'],
+        'expense': ['Expense', 'Bank', 'Credit Card'],
+        'transfer': ['Bank', 'Other Current Asset'],
+        'adjustment': ['Other Current Asset', 'Income', 'Expense']
+    }
+    return valid_types.get(transaction_type, [])
+
+@transactions_bp.route('/validate', methods=['POST'])
+def validate_transaction():
+    """Validate a transaction before creation"""
+    try:
+        data = request.get_json()
+        
+        # Basic validation
+        if not data:
+            return jsonify({'is_valid': False, 'error': 'No data provided'}), 400
+            
+        if 'entries' not in data or not data['entries']:
+            return jsonify({'is_valid': False, 'error': 'No entries provided'}), 400
+            
+        # Validate transaction type and sub-type
+        transaction_type = data.get('transaction_type')
+        sub_type = data.get('sub_type')
+        
+        if not transaction_type:
+            return jsonify({'is_valid': False, 'error': 'Transaction type is required'}), 400
+            
+        # Validate accounts
+        is_valid, error_message = validate_transaction_accounts(
+            transaction_type,
+            sub_type,
+            data['entries']
+        )
+        
+        if not is_valid:
+            return jsonify({'is_valid': False, 'error': error_message}), 400
+            
+        # Validate debits and credits balance
+        total_debits = sum(float(entry['amount']) for entry in data['entries'] if entry['type'] == 'debit')
+        total_credits = sum(float(entry['amount']) for entry in data['entries'] if entry['type'] == 'credit')
+        
+        if abs(total_debits - total_credits) > 0.01:  # Allow for small floating-point differences
+            return jsonify({'is_valid': False, 'error': 'Debits and credits must balance'}), 400
+            
+        return jsonify({'is_valid': True}), 200
+        
+    except Exception as e:
+        return jsonify({'is_valid': False, 'error': str(e)}), 500
+
+@transactions_bp.route('/create', methods=['POST'])
+def create_transaction():
+    """Create a new transaction"""
+    try:
+        data = request.get_json()
+        
+        # Validate the transaction first
+        validation_response = validate_transaction()
+        if validation_response[1] != 200:
+            return validation_response
+            
+        # Load chart of accounts to get account names
+        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+            chart_data = json.load(f)
+            accounts = {acc['id']: acc for acc in chart_data.get('accounts', [])}
+        
+        # Add account names to entries
+        for entry in data['entries']:
+            account = accounts.get(entry['accountId'])
+            if account:
+                entry['accountName'] = account['name']
+            
+        # Generate transaction ID
+        transaction_id = generate_transaction_id()
+        
+        # Create transaction object
+        transaction = Transaction.from_dict({
+            'id': transaction_id,
+            **data
+        })
+        
+        # Load existing transactions
+        transactions_data = load_transactions()
+        
+        # Add new transaction
+        transactions_data['transactions'].append(transaction.to_dict())
+        
+        # Save updated transactions
+        if save_transactions(transactions_data):
+            return jsonify({
+                'success': True,
+                'message': 'Transaction created successfully',
+                'transaction': transaction.to_dict()
+            }), 201
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to save transaction'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @transactions_bp.route('/list', methods=['GET'])
 def list_transactions():
@@ -257,16 +402,6 @@ def list_transactions():
 
     except Exception as e:
         return jsonify({'message': f'Error listing transactions: {str(e)}'}), 500
-
-@transactions_bp.route('/create', methods=['POST'])
-def create_transaction():
-    """Create a new transaction via HTTP endpoint"""
-    try:
-        data = request.get_json()
-        result = create_transaction_direct(data)
-        return jsonify(result), 201
-    except Exception as e:
-        return jsonify({'message': f'Error creating transaction: {str(e)}'}), 500
 
 @transactions_bp.route('/get/<transaction_id>', methods=['GET'])
 def get_transaction(transaction_id):
@@ -406,9 +541,17 @@ def post_transaction(transaction_id):
     except Exception as e:
         return jsonify({'message': f'Error posting transaction: {str(e)}'}), 500
 
-@transactions_bp.route('/void/<transaction_id>', methods=['POST'])
+@transactions_bp.route('/void/<transaction_id>', methods=['POST', 'OPTIONS'])
 def void_transaction(transaction_id):
     """Void a transaction"""
+    # Handle OPTIONS request for CORS
+    if request.method == 'OPTIONS':
+        response = jsonify({'message': 'OK'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+
     try:
         # Load transactions
         data = load_transactions()

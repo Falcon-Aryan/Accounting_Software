@@ -416,7 +416,7 @@ async function handleEditAccount(accountData) {
 
 async function handleDeleteAccount(accountId) {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/coa/delete/${accountId}`, {
+    const response = await fetch(`${config.public.apiBase}/api/coa/delete_account/${accountId}`, {
       method: 'DELETE'
     })
     

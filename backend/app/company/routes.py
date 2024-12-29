@@ -90,16 +90,19 @@ def validate_company_data(data: Dict) -> Optional[str]:
         return f"Validation error: {str(e)}"
 
 def create_audit_log(action: str, data: Dict) -> None:
-    """Create an audit log entry"""
+    """Create an audit log entry directly in company.json"""
     try:
-        audit_file = os.path.join(DATA_DIR, 'company_audit.json')
-        audit_data = []
+        # Load current company data
+        company_data = {}
+        if os.path.exists(COMPANY_DATA_FILE):
+            with open(COMPANY_DATA_FILE, 'r') as f:
+                company_data = json.load(f)
         
-        if os.path.exists(audit_file):
-            with open(audit_file, 'r') as f:
-                audit_data = json.load(f)
-                
-        # Set timestamp
+        # Initialize audit log array if it doesn't exist
+        if 'audit_log' not in company_data:
+            company_data['audit_log'] = []
+        
+        # Create new audit entry
         now = datetime.utcnow().date().isoformat()
         log_entry = {
             'id': str(uuid.uuid4()),
@@ -108,10 +111,12 @@ def create_audit_log(action: str, data: Dict) -> None:
             'data': data
         }
         
-        audit_data.append(log_entry)
+        # Add to audit log
+        company_data['audit_log'].append(log_entry)
         
-        with open(audit_file, 'w') as f:
-            json.dump(audit_data, f, indent=2)
+        # Save updated company data
+        with open(COMPANY_DATA_FILE, 'w') as f:
+            json.dump(company_data, f, indent=2)
             
     except Exception as e:
         logger.error(f"Failed to create audit log: {str(e)}")

@@ -4,7 +4,7 @@
     :error-message="errorMessage"
     :is-loading="isLoading"
     :has-data="filteredTransactions.length > 0"
-    :column-count="6"
+    :column-count="7"
     empty-state-message="No transactions found. Create a new transaction to get started."
   >
     <!-- Search Filter -->
@@ -29,6 +29,22 @@
             </div>
           </div>
           <div class="flex items-center space-x-4">
+            <select
+              v-model="filters.type"
+              class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="">All Types</option>
+              <option value="sale">Sale</option>
+              <option value="purchase">Purchase</option>
+              <option value="payment_received">Payment Received</option>
+              <option value="payment_made">Payment Made</option>
+              <option value="expense">Expense</option>
+              <option value="journal">Journal</option>
+              <option value="transfer">Transfer</option>
+              <option value="adjustment">Adjustment</option>
+              <option value="estimate">Estimate</option>
+              <option value="invoice">Invoice</option>
+            </select>
             <select
               v-model="filters.status"
               class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
@@ -59,13 +75,16 @@
           Description
         </th>
         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+          Type
+        </th>
+        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
           Status
         </th>
         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
           Amount
         </th>
-        <th scope="col" class="relative px-6 py-3">
-          <span class="sr-only">Actions</span>
+        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+          Actions
         </th>
       </tr>
     </template>
@@ -76,6 +95,12 @@
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ transaction.id }}</td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ formatDate(transaction.date) }}</td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ transaction.description }}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize" 
+                :class="getTransactionTypeClass(transaction.transaction_type)">
+            {{ formatTransactionType(transaction.transaction_type) }}
+          </span>
+        </td>
         <td class="px-6 py-4 whitespace-nowrap">
           <StatusBadge :status="transaction.status" />
         </td>
@@ -145,14 +170,19 @@
   <Teleport to="body">
     <TransactionDetailsModal
       v-if="selectedTransaction"
+      :show="!!selectedTransaction"
       :transaction="selectedTransaction"
       @close="selectedTransaction = null"
     />
+  </Teleport>
+
+  <!-- New Transaction Modal -->
+  <Teleport to="body">
     <NewTransactionModal
       v-if="showNewTransactionModal"
-      :is-open="showNewTransactionModal"
+      :show="showNewTransactionModal"
       @close="closeNewTransactionModal"
-      @save="handleCreateTransaction"
+      @transaction-created="handleTransactionCreated"
     />
   </Teleport>
 </template>
@@ -165,21 +195,18 @@ import BaseButton from '~/components/BaseButton.vue'
 import StatusBadge from '~/components/StatusBadge.vue'
 import TransactionDetailsModal from '~/components/TransactionDetailsModal.vue'
 import NewTransactionModal from '~/components/NewTransactionModal.vue'
-import { Teleport } from 'vue'
 
 const config = useRuntimeConfig()
 const transactions = ref([])
-const searchQuery = ref('')
-const errorMessage = ref('')
 const isLoading = ref(false)
+const errorMessage = ref('')
 const selectedTransaction = ref(null)
-const openOptionsForTransaction = ref(null)
 const showNewTransactionModal = ref(false)
-
+const openOptionsForTransaction = ref(null)
+const searchQuery = ref('')
 const filters = ref({
   status: '',
-  startDate: '',
-  endDate: ''
+  type: ''
 })
 
 // Filter transactions based on search query and status
@@ -201,6 +228,13 @@ const filteredTransactions = computed(() => {
   if (filters.value.status) {
     filtered = filtered.filter(trans => 
       trans.status && trans.status.toLowerCase() === filters.value.status.toLowerCase()
+    )
+  }
+  
+  // Filter by type
+  if (filters.value.type) {
+    filtered = filtered.filter(trans => 
+      trans.transaction_type && trans.transaction_type.toLowerCase() === filters.value.type.toLowerCase()
     )
   }
   
@@ -258,18 +292,64 @@ function formatAmount(amount) {
 
 // Calculate total amount
 function getTotalAmount(transaction) {
-  // For invoice transactions, use the amount from Accounts Receivable entry
-  if (transaction.transaction_type === 'invoice') {
-    const arEntry = transaction.entries.find(entry => 
-      entry.type === 'debit' && entry.description.toLowerCase().includes('accounts receivable')
-    )
-    return arEntry ? arEntry.amount : 0
+  if (!transaction || !transaction.entries || transaction.entries.length === 0) {
+    return 0
+  }
+
+  // Find the first debit entry which represents the actual transaction amount
+  const firstDebitEntry = transaction.entries.find(entry => entry.type === 'debit')
+  return firstDebitEntry ? firstDebitEntry.amount : 0
+}
+
+// Get transaction type class
+function getTransactionTypeClass(type) {
+  if (!type) return 'bg-gray-100 text-gray-800'
+  
+  switch (type.toLowerCase()) {
+    case 'sale':
+      return 'bg-green-100 text-green-800'
+    case 'purchase':
+      return 'bg-blue-100 text-blue-800'
+    case 'payment_received':
+      return 'bg-emerald-100 text-emerald-800'
+    case 'payment_made':
+      return 'bg-indigo-100 text-indigo-800'
+    case 'expense':
+      return 'bg-red-100 text-red-800'
+    case 'journal':
+      return 'bg-purple-100 text-purple-800'
+    case 'transfer':
+      return 'bg-cyan-100 text-cyan-800'
+    case 'adjustment':
+      return 'bg-amber-100 text-amber-800'
+    case 'estimate':
+      return 'bg-sky-100 text-sky-800'
+    case 'invoice':
+      return 'bg-lime-100 text-lime-800'
+    default:
+      return 'bg-gray-100 text-gray-800'
+  }
+}
+
+// Format transaction type
+function formatTransactionType(type) {
+  if (!type) return 'Unknown'
+  
+  const typeMap = {
+    'sale': 'Sale',
+    'purchase': 'Purchase',
+    'payment_received': 'Payment Received',
+    'payment_made': 'Payment Made',
+    'expense': 'Expense',
+    'journal': 'Journal Entry',
+    'transfer': 'Transfer',
+    'adjustment': 'Adjustment',
+    'estimate': 'Estimate',
+    'invoice': 'Invoice',
+    'other': 'Other'
   }
   
-  // For other transactions, sum up all debit entries
-  return transaction.entries.reduce((total, entry) => {
-    return total + (entry.type === 'debit' ? entry.amount : 0)
-  }, 0)
+  return typeMap[type.toLowerCase()] || 'Unknown'
 }
 
 // Toggle options dropdown
@@ -312,7 +392,13 @@ async function voidTransaction(transactionId) {
 
   try {
     const response = await fetch(`${config.public.apiBase}/api/transactions/void/${transactionId}`, {
-      method: 'POST'
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        reason: 'User requested void'
+      })
     })
 
     if (!response.ok) {
@@ -351,38 +437,25 @@ async function deleteTransaction(transactionId) {
 }
 
 // Open new transaction modal
-function openNewTransactionModal() {
+const openNewTransactionModal = () => {
+  console.log('Opening modal')  // Debug log
   showNewTransactionModal.value = true
 }
 
 // Close new transaction modal
-function closeNewTransactionModal() {
+const closeNewTransactionModal = () => {
+  console.log('Closing modal')  // Debug log
   showNewTransactionModal.value = false
 }
 
-// Handle create transaction
-async function handleCreateTransaction(transactionData) {
-  try {
-    const response = await fetch(`${config.public.apiBase}/api/transactions/create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(transactionData)
-    })
-
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.message || 'Failed to create transaction')
-    }
-
-    // Refresh transactions list and close modal
-    await fetchTransactions()
-    closeNewTransactionModal()
-  } catch (error) {
-    errorMessage.value = error.message
-    console.error('Error creating transaction:', error)
-  }
+// Handle transaction creation
+const handleTransactionCreated = async (transaction) => {
+  console.log('Transaction created:', transaction)
+  // Add the new transaction to the list immediately
+  transactions.value = [...transactions.value, transaction]
+  // Then refresh the full list from the server
+  await fetchTransactions()
+  closeNewTransactionModal()
 }
 
 // Watch for filter changes

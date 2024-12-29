@@ -1,365 +1,483 @@
 <template>
-  <div v-if="isOpen" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-[800px] shadow-lg rounded-md bg-white">
-      <div class="mt-3">
-        <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">Create New Transaction</h3>
-        <form @submit.prevent="handleSubmit">
-          <!-- Basic Info -->
-          <div class="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Date</label>
-              <input 
-                type="date" 
-                v-model="formData.date"
-                required
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Transaction Type</label>
-              <select 
-                v-model="formData.transaction_type"
-                required
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+  <Teleport to="body">
+    <div v-if="show" class="fixed inset-0 z-50 overflow-y-auto">
+      <!-- Overlay -->
+      <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="close"></div>
+
+      <!-- Modal -->
+      <div class="flex items-center justify-center min-h-screen p-4">
+        <div 
+          class="relative bg-white rounded-lg shadow-xl w-full max-w-6xl mx-auto"
+          @click.stop
+        >
+          <!-- Header -->
+          <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-medium text-gray-900">Create New Transaction</h3>
+              <button
+                type="button"
+                class="text-gray-400 hover:text-gray-500"
+                @click="close"
               >
-                <option value="" disabled>Select Type</option>
-                <option value="invoice">Invoice</option>
-                <option value="payment">Payment</option>
-                <option value="journal">Journal Entry</option>
-                <option value="reversal">Reversal</option>
-              </select>
+                <span class="sr-only">Close</span>
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
           </div>
 
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
-            <input 
-              type="text"
-              v-model="formData.description"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-              placeholder="Enter transaction description"
-            />
-          </div>
+          <!-- Body -->
+          <div class="px-6 py-4">
+            <form @submit.prevent="handleSubmit">
+              <!-- Basic Info -->
+              <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                  <input 
+                    type="date" 
+                    v-model="formData.date"
+                    required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Transaction Type</label>
+                  <select 
+                    v-model="formData.transaction_type"
+                    @change="handleTypeChange"
+                    required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                  >
+                    <option value="">Select Type</option>
+                    <option v-for="type in transactionTypes" :key="type.value" :value="type.value">
+                      {{ type.label }}
+                    </option>
+                  </select>
+                </div>
+              </div>
 
-          <!-- Transaction Entries -->
-          <div class="mb-4">
-            <div class="flex justify-between items-center mb-2">
-              <label class="block text-sm font-medium text-gray-700">Entries</label>
-              <div class="flex gap-2">
-                <button 
+              <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Sub Type</label>
+                  <select 
+                    v-model="formData.sub_type"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                    :disabled="!formData.transaction_type"
+                  >
+                    <option value="">Select Sub Type</option>
+                    <option v-for="subType in availableSubTypes" :key="subType.value" :value="subType.value">
+                      {{ subType.label }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <input 
+                  type="text"
+                  v-model="formData.description"
+                  placeholder="Enter transaction description"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+
+              <!-- Entries -->
+              <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                  <label class="block text-sm font-medium text-gray-700">Entries</label>
+                  <button 
+                    type="button"
+                    @click="addDualEntry"
+                    class="px-3 py-1 text-sm text-green-600 hover:text-green-700 focus:outline-none"
+                  >
+                    Add Entry
+                  </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                  <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                      <tr v-for="(entry, index) in formData.entries" :key="index">
+                        <td class="px-6 py-4">
+                          <select
+                            v-model="entry.accountId"
+                            required
+                            @change="handleAccountSelection(entry, index)"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                          >
+                            <option value="">Select Account</option>
+                            <option 
+                              v-for="account in getFilteredAccountOptions" 
+                              :key="account.value" 
+                              :value="account.value"
+                            >
+                              {{ account.label }}
+                            </option>
+                          </select>
+                        </td>
+                        <td class="px-6 py-4">
+                          <div v-if="index < 2">
+                            <span class="px-3 py-2 text-sm capitalize">{{ index === 0 ? 'debit' : 'credit' }}</span>
+                          </div>
+                          <select
+                            v-else
+                            v-model="entry.type"
+                            required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                          >
+                            <option value="debit">Debit</option>
+                            <option value="credit">Credit</option>
+                          </select>
+                        </td>
+                        <td class="px-6 py-4">
+                          <input
+                            type="number"
+                            v-model="entry.amount"
+                            required
+                            step="0.01"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                            @input="updatePairAmount(index)"
+                          />
+                        </td>
+                        <td class="px-6 py-4">
+                          <input
+                            type="text"
+                            v-model="entry.description"
+                            placeholder="Optional"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                          />
+                        </td>
+                        <td class="px-6 py-4">
+                          <button
+                            type="button"
+                            @click="removeDualEntry(index)"
+                            class="text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Error Message -->
+              <div v-if="errorMessage" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+                <p class="text-sm text-red-700">{{ errorMessage }}</p>
+              </div>
+
+              <!-- Footer -->
+              <div class="flex justify-end space-x-3 mt-6">
+                <button
                   type="button"
-                  @click="addDualEntry"
-                  class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                  @click="close"
+                  class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 >
-                  Add Entry Pair
+                  Cancel
                 </button>
-                <button 
-                  type="button"
-                  @click="validateTransaction"
-                  class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                <button
+                  type="submit"
+                  class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 >
-                  Validate
+                  Create Transaction
                 </button>
               </div>
-            </div>
-
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                  <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                  <template v-for="(entry, index) in formData.entries" :key="index">
-                    <tr :class="{ 'bg-gray-50': index % 4 === 2 || index % 4 === 3 }">
-                      <td class="px-6 py-4">
-                        <select 
-                          v-model="entry.accountId"
-                          required
-                          class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
-                        >
-                          <option value="" disabled>Select Account</option>
-                          <option 
-                            v-for="account in filteredAccounts(entry.type)" 
-                            :key="account.id" 
-                            :value="account.id"
-                          >
-                            {{ account.name }} ({{ account.id }})
-                          </option>
-                        </select>
-                      </td>
-                      <td class="px-6 py-4">
-                        <input 
-                          type="text"
-                          v-model="entry.description"
-                          class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
-                          placeholder="Entry description"
-                        />
-                      </td>
-                      <td class="px-6 py-4">
-                        <div class="text-sm font-medium">
-                          <span
-                            :class="{
-                              'px-2 py-1 rounded': true,
-                              'bg-blue-100 text-blue-800': entry.type === 'debit',
-                              'bg-purple-100 text-purple-800': entry.type === 'credit'
-                            }"
-                          >
-                            {{ entry.type }}
-                          </span>
-                        </div>
-                      </td>
-                      <td class="px-6 py-4">
-                        <input 
-                          type="number"
-                          v-model="entry.amount"
-                          required
-                          min="0"
-                          step="0.01"
-                          class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 text-right"
-                          placeholder="0.00"
-                          @input="updatePairAmount(index)"
-                        />
-                      </td>
-                      <td class="px-6 py-4">
-                        <button 
-                          v-if="index % 2 === 0"
-                          type="button"
-                          @click="removeDualEntry(index)"
-                          class="text-red-600 hover:text-red-900"
-                        >
-                          Remove Pair
-                        </button>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-                <tfoot class="bg-gray-50 font-medium">
-                  <tr>
-                    <td colspan="3" class="px-6 py-3 text-right">Total Debits:</td>
-                    <td class="px-6 py-3 text-right">{{ formatAmount(totalDebits) }}</td>
-                    <td></td>
-                  </tr>
-                  <tr>
-                    <td colspan="3" class="px-6 py-3 text-right">Total Credits:</td>
-                    <td class="px-6 py-3 text-right">{{ formatAmount(totalCredits) }}</td>
-                    <td></td>
-                  </tr>
-                  <tr>
-                    <td colspan="3" class="px-6 py-3 text-right">Difference:</td>
-                    <td 
-                      class="px-6 py-3 text-right"
-                      :class="isBalanced ? 'text-green-600' : 'text-red-600'"
-                    >
-                      {{ formatAmount(Math.abs(totalDebits - totalCredits)) }}
-                    </td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+            </form>
           </div>
-
-          <!-- Error Message -->
-          <div v-if="errorMessage" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-            <p class="text-sm text-red-700">{{ errorMessage }}</p>
-          </div>
-
-          <!-- Form Actions -->
-          <div class="mt-6 flex justify-end space-x-3">
-            <button
-              type="button"
-              @click="close"
-              class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              :disabled="!isBalanced || !isValid"
-              class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Create Transaction
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRuntimeConfig } from '#app'
 
+const config = useRuntimeConfig()
 const props = defineProps({
-  isOpen: Boolean
+  show: {
+    type: Boolean,
+    required: true
+  }
 })
 
-const emit = defineEmits(['close', 'save'])
+const emit = defineEmits(['close', 'transaction-created'])
 
 const errorMessage = ref('')
+const accountsByType = ref({})
 const accounts = ref([])
-const isValid = ref(true)
-
 const formData = ref({
   date: new Date().toISOString().split('T')[0],
   transaction_type: '',
+  sub_type: '',
   description: '',
   entries: [
     {
       accountId: '',
-      description: '',
+      accountName: '',
       type: 'debit',
-      amount: 0
+      amount: 0,
+      description: ''
     },
     {
       accountId: '',
-      description: '',
+      accountName: '',
       type: 'credit',
-      amount: 0
+      amount: 0,
+      description: ''
     }
   ]
 })
 
-// Computed
-const totalDebits = computed(() => {
-  return formData.value.entries
-    .filter(e => e.type === 'debit')
-    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
-})
-
-const totalCredits = computed(() => {
-  return formData.value.entries
-    .filter(e => e.type === 'credit')
-    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
-})
-
-const isBalanced = computed(() => {
-  return Math.abs(totalDebits.value - totalCredits.value) < 0.01
-})
-
-// Methods
-const loadAccounts = async () => {
-  try {
-    const response = await api.get('/chart-of-accounts/list')
-    accounts.value = response.data
-  } catch (error) {
-    console.error('Error loading accounts:', error)
-  }
-}
-
-const filteredAccounts = (type) => {
-  // Filter accounts based on transaction type and entry type
-  // This is a placeholder - implement actual filtering logic based on your requirements
-  return accounts.value
-}
-
-const addDualEntry = () => {
-  formData.value.entries.push(
-    {
-      accountId: '',
-      description: '',
-      type: 'debit',
-      amount: 0
-    },
-    {
-      accountId: '',
-      description: '',
-      type: 'credit',
-      amount: 0
-    }
-  )
-}
-
-const removeDualEntry = (index) => {
-  if (formData.value.entries.length > 2) {
-    formData.value.entries.splice(index, 2)
-  }
-}
-
-const updatePairAmount = (index) => {
-  if (index % 2 === 0) {
-    // Update the credit amount to match the debit
-    const amount = Number(formData.value.entries[index].amount) || 0
-    if (formData.value.entries[index + 1]) {
-      formData.value.entries[index + 1].amount = amount
-    }
-  }
-}
-
-const validateTransaction = async () => {
-  try {
-    const response = await api.post('/transactions/validate', formData.value)
-    if (response.data.is_valid) {
-      isValid.value = true
-      errorMessage.value = ''
-    } else {
-      isValid.value = false
-      errorMessage.value = response.data.error
-    }
-  } catch (error) {
-    isValid.value = false
-    errorMessage.value = 'Failed to validate transaction'
-    console.error('Error validating transaction:', error)
-  }
-}
-
-const handleSubmit = async () => {
-  errorMessage.value = ''
-
-  if (!isBalanced.value) {
-    errorMessage.value = 'Transaction must be balanced (debits must equal credits)'
-    return
-  }
-
-  try {
-    // Validate before submitting
-    await validateTransaction()
-    if (!isValid.value) return
-
-    emit('save', formData.value)
-  } catch (error) {
-    errorMessage.value = 'Failed to create transaction'
-    console.error('Error creating transaction:', error)
-  }
-}
-
 const close = () => {
-  resetForm()
   emit('close')
+  resetForm()
 }
 
 const resetForm = () => {
   formData.value = {
     date: new Date().toISOString().split('T')[0],
     transaction_type: '',
+    sub_type: '',
     description: '',
     entries: [
       {
         accountId: '',
-        description: '',
+        accountName: '',
         type: 'debit',
-        amount: 0
+        amount: 0,
+        description: ''
       },
       {
         accountId: '',
-        description: '',
+        accountName: '',
         type: 'credit',
-        amount: 0
+        amount: 0,
+        description: ''
       }
     ]
   }
   errorMessage.value = ''
-  isValid.value = true
 }
 
-// Lifecycle
+const transactionTypes = [
+  { value: 'sale', label: 'Sale' },
+  { value: 'purchase', label: 'Purchase' },
+  { value: 'expense', label: 'Expense' },
+  { value: 'income', label: 'Income' },
+  { value: 'payment_received', label: 'Payment Received' },
+  { value: 'payment_made', label: 'Payment Made' },
+  { value: 'transfer', label: 'Transfer' },
+  { value: 'adjustment', label: 'Adjustment' }
+]
+
+const subTypesByType = {
+  'sale': [
+    { value: 'product_sale', label: 'Product Sale' },
+    { value: 'service_sale', label: 'Service Sale' }
+  ],
+  'purchase': [
+    { value: 'product_purchase', label: 'Product Purchase' },
+    { value: 'service_purchase', label: 'Service Purchase' }
+  ],
+  'expense': [
+    { value: 'general_expense', label: 'General Expense' },
+    { value: 'utility_expense', label: 'Utility Expense' }
+  ],
+  'income': [
+    { value: 'interest_income', label: 'Interest Income' },
+    { value: 'rental_income', label: 'Rental Income' },
+    { value: 'other_income', label: 'Other Income' }
+  ],
+  'payment_received': [
+    { value: 'customer_payment', label: 'Customer Payment' },
+    { value: 'other_payment', label: 'Other Payment' }
+  ],
+  'payment_made': [
+    { value: 'vendor_payment', label: 'Vendor Payment' },
+    { value: 'other_payment', label: 'Other Payment' }
+  ],
+  'transfer': [
+    { value: 'bank_transfer', label: 'Bank Transfer' },
+    { value: 'asset_transfer', label: 'Asset Transfer' }
+  ],
+  'adjustment': [
+    { value: 'inventory_adjustment', label: 'Inventory Adjustment' },
+    { value: 'balance_adjustment', label: 'Balance Adjustment' }
+  ]
+}
+
+const availableSubTypes = computed(() => {
+  if (!formData.value.transaction_type) return []
+  return subTypesByType[formData.value.transaction_type.toLowerCase()] || []
+})
+
+const validAccountTypes = {
+  'sale': ['Accounts Receivable', 'Income', 'Bank', 'Other Current Asset'],
+  'purchase': ['Accounts Payable', 'Other Current Asset', 'Expense', 'Bank'],
+  'payment_received': ['Bank', 'Accounts Receivable'],
+  'payment_made': ['Bank', 'Accounts Payable'],
+  'expense': ['Expense', 'Bank', 'Credit Card'],
+  'transfer': ['Bank', 'Other Current Asset'],
+  'adjustment': ['Other Current Asset', 'Income', 'Expense'],
+  'income': ['Bank', 'Other Current Asset', 'Income']
+}
+
+const getAccountOptions = computed(() => {
+  const options = []
+  for (const account of accounts.value) {
+    options.push({
+      value: account.id,
+      label: account.name
+    })
+  }
+  return options
+})
+
+const getFilteredAccountOptions = computed(() => {
+  if (!formData.value.transaction_type) {
+    return []
+  }
+
+  const validTypes = validAccountTypes[formData.value.transaction_type.toLowerCase()]
+  if (!validTypes) {
+    return []
+  }
+
+  return accounts.value
+    .filter(account => validTypes.includes(account.accountType))
+    .map(account => ({
+      value: account.id,
+      label: `${account.name} (${account.accountType})`
+    }))
+})
+
+const loadAccountsByType = async () => {
+  try {
+    const response = await fetch(`${config.public.apiBase}/api/coa/accounts_by_type`)
+    if (!response.ok) {
+      throw new Error('Failed to load accounts')
+    }
+    const data = await response.json()
+    accountsByType.value = data.accounts_by_type || {}
+    accounts.value = data.all_accounts || []
+  } catch (error) {
+    errorMessage.value = 'Failed to load accounts'
+  }
+}
+
+const addDualEntry = () => {
+  formData.value.entries.push(
+    {
+      accountId: '',
+      accountName: '',
+      type: 'debit',
+      amount: 0,
+      description: ''
+    },
+    {
+      accountId: '',
+      accountName: '',
+      type: 'credit',
+      amount: 0,
+      description: ''
+    }
+  )
+}
+
+const removeDualEntry = (index) => {
+  formData.value.entries.splice(index, 1)
+}
+
+const updatePairAmount = (index) => {
+  const entry = formData.value.entries[index]
+  const pairIndex = index % 2 === 0 ? index + 1 : index - 1
+  if (formData.value.entries[pairIndex]) {
+    formData.value.entries[pairIndex].amount = entry.amount
+  }
+}
+
+const handleTypeChange = () => {
+  formData.value.sub_type = ''
+}
+
+const handleAccountSelection = (entry, index) => {
+  if (!entry.accountId) {
+    entry.accountName = ''
+    return
+  }
+  
+  // Find the selected account from the options
+  const selectedAccount = getAccountOptions.value.find(acc => acc.value === entry.accountId)
+  if (selectedAccount) {
+    // Set the account name
+    entry.accountName = selectedAccount.label
+  }
+}
+
+watch(() => formData.value.transaction_type, () => {
+  formData.value.sub_type = ''
+  // Clear account selections when transaction type changes
+  formData.value.entries.forEach(entry => {
+    entry.accountId = ''
+    entry.description = ''
+  })
+})
+
+const handleSubmit = async () => {
+  try {
+    // First validate the transaction
+    const validateResponse = await fetch(`${config.public.apiBase}/api/transactions/validate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData.value)
+    })
+
+    if (!validateResponse.ok) {
+      const error = await validateResponse.json()
+      throw new Error(error.message || 'Validation failed')
+    }
+
+    // Then create the transaction
+    const createResponse = await fetch(`${config.public.apiBase}/api/transactions/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData.value)
+    })
+
+    if (!createResponse.ok) {
+      const error = await createResponse.json()
+      throw new Error(error.message || 'Failed to create transaction')
+    }
+
+    const result = await createResponse.json()
+    emit('transaction-created', result.transaction) // Emit the created transaction data
+    close()
+  } catch (error) {
+    console.error('Transaction error:', error)
+    errorMessage.value = error.message
+  }
+}
+
+// Load accounts on mount
 onMounted(() => {
-  loadAccounts()
+  loadAccountsByType()
 })
 </script>

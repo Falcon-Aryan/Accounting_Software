@@ -5,18 +5,68 @@ from enum import Enum, auto
 
 class TransactionType(Enum):
     """Types of transactions"""
-    PAYMENT = 'payment'
-    INVOICE = 'invoice'
-    BILL = 'bill'
-    EXPENSE = 'expense'
-    JOURNAL = 'journal'
-    TRANSFER = 'transfer'
+    SALE = 'sale'                    # Sale of goods or services
+    PURCHASE = 'purchase'            # Purchase of goods or services
+    PAYMENT_RECEIVED = 'payment_received'  # Money received from customers
+    PAYMENT_MADE = 'payment_made'    # Money paid to vendors
+    EXPENSE = 'expense'              # Business expenses
+    JOURNAL = 'journal'              # Manual journal entries
+    TRANSFER = 'transfer'            # Fund transfers between accounts
+    ADJUSTMENT = 'adjustment'        # Inventory or account adjustments
+    ESTIMATE = 'estimate'            # Customer estimates/quotes
+    INVOICE = 'invoice'              # Customer invoices
+    OTHER = 'other'                  # Other transactions
+
+class TransactionSubType(Enum):
+    """Sub-types for further transaction categorization"""
+    # Sale sub-types
+    PRODUCT_SALE = 'product_sale'
+    SERVICE_SALE = 'service_sale'
+    
+    # Purchase sub-types
+    INVENTORY_PURCHASE = 'inventory_purchase'
+    SUPPLY_PURCHASE = 'supply_purchase'
+    
+    # Payment sub-types
+    CASH_PAYMENT = 'cash_payment'
+    BANK_TRANSFER = 'bank_transfer'
+    CREDIT_CARD = 'credit_card'
+    CHECK = 'check'
+    
+    # Expense sub-types
+    UTILITIES = 'utilities'
+    RENT = 'rent'
+    PAYROLL = 'payroll'
+    ADVERTISING = 'advertising'
+    OFFICE_SUPPLIES = 'office_supplies'
+    
+    # Adjustment sub-types
+    INVENTORY_ADJUSTMENT = 'inventory_adjustment'
+    ACCOUNT_ADJUSTMENT = 'account_adjustment'
+    
+    # Estimate sub-types
+    ESTIMATE_DRAFT = 'estimate_draft'
+    ESTIMATE_SENT = 'estimate_sent'
+    ESTIMATE_ACCEPTED = 'estimate_accepted'
+    ESTIMATE_DECLINED = 'estimate_declined'
+    ESTIMATE_EXPIRED = 'estimate_expired'
+    ESTIMATE_CONVERTED = 'estimate_converted'
+    
+    # Invoice sub-types
+    INVOICE_DRAFT = 'invoice_draft'
+    INVOICE_POSTED = 'invoice_posted'
+    INVOICE_PAID = 'invoice_paid'
+    INVOICE_PARTIALLY_PAID = 'invoice_partially_paid'
+    INVOICE_OVERDUE = 'invoice_overdue'
+    INVOICE_VOID = 'invoice_void'
+    
     OTHER = 'other'
 
 @dataclass
 class TransactionEntry:
     """Represents a single entry in a transaction (debit or credit)"""
     accountId: str
+    accountName: str
     amount: float
     type: str  # 'debit' or 'credit'
     description: Optional[str] = None
@@ -26,6 +76,7 @@ class TransactionEntry:
         """Create a TransactionEntry instance from a dictionary"""
         return cls(
             accountId=data.get('accountId', ''),
+            accountName=data.get('accountName', ''),
             amount=float(data.get('amount', 0.0)),
             type=data.get('type', ''),
             description=data.get('description')
@@ -35,6 +86,7 @@ class TransactionEntry:
         """Convert TransactionEntry instance to dictionary"""
         return {
             'accountId': self.accountId,
+            'accountName': self.accountName,
             'amount': self.amount,
             'type': self.type,
             'description': self.description
@@ -44,11 +96,13 @@ class TransactionEntry:
 class Transaction:
     """Represents a complete transaction with multiple entries"""
     id: str
-    date: str  # Changed from date to str to match other date fields
+    date: str
     entries: List[TransactionEntry]
     status: str  # 'draft', 'posted', or 'void'
     description: Optional[str] = None
-    transaction_type: TransactionType = TransactionType.OTHER  # Added transaction type
+    transaction_type: TransactionType = TransactionType.OTHER
+    sub_type: TransactionSubType = TransactionSubType.OTHER
+    metadata: Dict[str, Any] = None  # Additional context for the transaction
     reference_type: Optional[str] = None  # e.g., 'invoice_payment', 'bill_payment'
     reference_id: Optional[str] = None  # ID of the referenced document
     customer_name: Optional[str] = None  # Added customer name
@@ -73,16 +127,24 @@ class Transaction:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Transaction':
         """Create a Transaction instance from a dictionary"""
-        # Convert entries
-        entries = [TransactionEntry.from_dict(e) for e in data.get('entries', [])]
+        # Convert entries to TransactionEntry objects
+        entries = [TransactionEntry.from_dict(entry) for entry in data.get('entries', [])]
         
-        # Convert transaction type
-        transaction_type = data.get('transaction_type')
-        if isinstance(transaction_type, str):
+        # Convert transaction_type string to enum
+        transaction_type = data.get('transaction_type', 'other')
+        try:
             transaction_type = TransactionType(transaction_type)
-        elif not isinstance(transaction_type, TransactionType):
+        except ValueError:
             transaction_type = TransactionType.OTHER
-            
+
+        # Convert sub_type string to enum
+        sub_type = data.get('sub_type', 'other')
+        try:
+            sub_type = TransactionSubType(sub_type)
+        except ValueError:
+            sub_type = TransactionSubType.OTHER
+
+        # Create the transaction
         return cls(
             id=data.get('id', ''),
             date=data.get('date', ''),
@@ -90,10 +152,12 @@ class Transaction:
             status=data.get('status', 'draft'),
             description=data.get('description'),
             transaction_type=transaction_type,
+            sub_type=sub_type,
+            metadata=data.get('metadata', {}),
             reference_type=data.get('reference_type'),
             reference_id=data.get('reference_id'),
-            customer_name=data.get('customer_name'),  # Added customer name
-            products=data.get('products', []),  # Added products list
+            customer_name=data.get('customer_name'),
+            products=data.get('products'),
             created_at=data.get('created_at'),
             updated_at=data.get('updated_at'),
             posted_at=data.get('posted_at'),
@@ -109,14 +173,16 @@ class Transaction:
         return {
             'id': self.id,
             'date': self.date,
-            'entries': [e.to_dict() for e in self.entries],
+            'entries': [entry.to_dict() for entry in self.entries],
             'status': self.status,
             'description': self.description,
             'transaction_type': self.transaction_type.value,
+            'sub_type': self.sub_type.value,
+            'metadata': self.metadata,
             'reference_type': self.reference_type,
             'reference_id': self.reference_id,
-            'customer_name': self.customer_name,  # Added customer name
-            'products': self.products,  # Added products list
+            'customer_name': self.customer_name,
+            'products': self.products,
             'created_at': self.created_at,
             'updated_at': self.updated_at,
             'posted_at': self.posted_at,

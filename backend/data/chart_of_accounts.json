@@ -230,28 +230,13 @@
       "quickbooksBalance": 0.0,
       "active": true,
       "isDefault": true
-    },
-    {
-      "id": "1412-8861",
-      "name": "Sales of Product Income",
-      "accountType": "Income",
-      "detailType": "Sales of Product Income",
-      "description": "Used for Income Account for Inventory Products ",
-      "openingBalance": 0.0,
-      "currentBalance": 0.0,
-      "quickbooksBalance": 0.0,
-      "normalBalanceType": "credit",
-      "parentAccountId": null,
-      "lastTransactionDate": null,
-      "active": true,
-      "isDefault": false
     }
   ],
   "summary": {
-    "totalAccounts": 22,
-    "activeAccounts": 22,
+    "totalAccounts": 21,
+    "activeAccounts": 21,
     "inactiveAccounts": 0,
     "totalDebit": 0,
-    "totalCredit": 0.0
+    "totalCredit": 0
   }
 }

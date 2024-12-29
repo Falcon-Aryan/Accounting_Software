@@ -266,6 +266,39 @@ def get_detail_types(account_type):
         print(f"Debug: Error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@chart_of_accounts_bp.route('/accounts_by_type', methods=['GET'])
+def get_accounts_by_type():
+    """Get accounts grouped by their type"""
+    try:
+        accounts_data = load_accounts()
+        accounts = accounts_data.get('accounts', [])
+        
+        # Group accounts by type
+        accounts_by_type = {}
+        for account in accounts:
+            if account.get('active', True):  # Only include active accounts
+                acc_type = account.get('accountType')
+                if acc_type not in accounts_by_type:
+                    accounts_by_type[acc_type] = []
+                accounts_by_type[acc_type].append({
+                    'id': account.get('id'),
+                    'name': account.get('name'),
+                    'accountType': account.get('accountType'),
+                    'detailType': account.get('detailType'),
+                    'description': account.get('description'),
+                    'isDefault': account.get('isDefault', False)
+                })
+        
+        return jsonify({
+            'accounts_by_type': accounts_by_type,
+            'all_accounts': accounts
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
 @chart_of_accounts_bp.route('/update-balance/<account_id>', methods=['POST'])
 def update_account_balance(account_id):
     """Update account balance"""

@@ -3,7 +3,15 @@
     <div class="relative top-20 mx-auto p-5 border w-[1000px] shadow-lg rounded-md bg-white">
       <!-- Modal Header -->
       <div class="flex justify-between items-center p-4 border-b">
-        <h2 class="text-xl font-semibold">Edit Invoice</h2>
+        <div>
+          <h2 class="text-xl font-semibold">Edit Invoice</h2>
+          <div v-if="props.invoice.status === 'void'" class="mt-1 text-sm text-red-600">
+            Voided: {{ props.invoice.void_reason || 'No reason provided' }}
+            <span v-if="props.invoice.voided_at" class="ml-2 text-gray-500">
+              ({{ formatDate(props.invoice.voided_at) }})
+            </span>
+          </div>
+        </div>
         <button @click="close" class="text-gray-500 hover:text-gray-700">
           <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -337,6 +345,12 @@ function formatCurrency(amount) {
     style: 'currency',
     currency: 'USD'
   }).format(amount)
+}
+
+function formatDate(date) {
+  return new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium'
+  }).format(new Date(date))
 }
 
 const calculateTotal = computed(() => {

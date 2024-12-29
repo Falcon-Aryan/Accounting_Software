@@ -50,29 +50,27 @@
 
     <!-- Table Header -->
     <template #table-header>
-      <tr>
-        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          Invoice #
-        </th>
-        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          Customer
-        </th>
-        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          Date
-        </th>
-        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          Due Date
-        </th>
-        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          Amount
-        </th>
-        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          Status
-        </th>
-        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          Actions
-        </th>
-      </tr>
+      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        Invoice #
+      </th>
+      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        Date
+      </th>
+      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        Customer
+      </th>
+      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        Amount
+      </th>
+      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        Balance Due
+      </th>
+      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        Status
+      </th>
+      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+        Actions
+      </th>
     </template>
 
     <!-- Table Body -->
@@ -80,21 +78,38 @@
       <tr v-for="invoice in filteredInvoices" :key="invoice.id" class="even:bg-gray-50">
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
           {{ invoice.invoice_no }}
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-black-500">
-          {{ invoice.customer_name }}
+          <div v-if="invoice.status === 'void'" class="text-xs text-red-600 mt-1">
+            {{ invoice.void_reason || 'No reason provided' }}
+          </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
           {{ formatDate(invoice.invoice_date) }}
+          <div v-if="invoice.status === 'void' && invoice.voided_at" class="text-xs text-gray-400 mt-1">
+            Voided: {{ formatDate(invoice.voided_at) }}
+          </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-          {{ formatDate(invoice.due_date) }}
+          {{ invoice.customer_name }}
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-          {{ formatCurrency(calculateTotal(invoice.products)) }}
+          {{ formatCurrency(invoice.total_amount) }}
         </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm">
-          <StatusBadge :status="invoice.status" />
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          {{ formatCurrency(invoice.balance_due) }}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap">
+          <span
+            :class="{
+              'px-2 py-1 text-xs font-medium rounded-full': true,
+              'bg-gray-100 text-gray-800': invoice.status === 'draft',
+              'bg-green-100 text-green-800': invoice.status === 'posted',
+              'bg-blue-100 text-blue-800': invoice.status === 'paid',
+              'bg-red-100 text-red-800': invoice.status === 'overdue',
+              'bg-gray-100 text-gray-800 line-through': invoice.status === 'void'
+            }"
+          >
+            {{ invoice.status }}
+          </span>
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
           <div class="relative inline-block text-left options-container">
@@ -112,51 +127,52 @@
               class="absolute left-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50"
               @click.stop
             >
-            <div class="flex flex-col" role="menu">
-            <!-- Edit Option -->
-            <div class="py-1">
-              <button
-                @click="editInvoice(invoice)"
-                class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                role="menuitem"
-              >
-                Edit
-              </button>
-            </div>
+              <div class="flex flex-col" role="menu">
+                <!-- Edit Option -->
+                <div class="py-1">
+                  <button
+                    @click="editInvoice(invoice)"
+                    class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:text-gray-400 disabled:hover:bg-white disabled:cursor-not-allowed"
+                    role="menuitem"
+                    :disabled="invoice.status === 'void'"
+                  >
+                    Edit
+                  </button>
+                </div>
 
-            <!-- Post Option - Only for draft invoices -->
-            <div class="py-1 border-t border-gray-100">
-              <button
-                @click="postInvoice(invoice.id)"
-                class="w-full text-left px-4 py-2 text-sm text-green-700 hover:bg-gray-100"
-                role="menuitem"
-              >
-                Post
-              </button>
-            </div>
+                <!-- Post Option - Only for draft invoices -->
+                <div v-if="invoice.status === 'draft'" class="py-1 border-t border-gray-100">
+                  <button
+                    @click="postInvoice(invoice.id)"
+                    class="w-full text-left px-4 py-2 text-sm text-green-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Post
+                  </button>
+                </div>
 
-            <!-- Delete Option - Only for draft invoices -->
-            <div class="py-1 border-t border-gray-100">
-              <button
-                @click="() => deleteInvoice(invoice.id)"
-                class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
-                role="menuitem"
-              >
-                Delete
-              </button>
-            </div>
+                <!-- Void Option - Only for posted/overdue invoices -->
+                <div v-if="invoice.status !== 'void' && invoice.status !== 'draft'" class="py-1 border-t border-gray-100">
+                  <button
+                    @click="voidInvoice(invoice.id)"
+                    class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Void
+                  </button>
+                </div>
 
-            <!-- Void Option - Only for posted/overdue invoices -->
-            <div class="py-1 border-t border-gray-100">
-              <button
-                @click="() => voidInvoice(invoice.id)"
-                class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
-                role="menuitem"
-              >
-                Void
-              </button>
-            </div>
-          </div>
+                <!-- Delete Option - Only for draft invoices -->
+                <div class="py-1 border-t border-gray-100">
+                  <button
+                    @click="confirmDelete(invoice)"
+                    class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </td>
@@ -315,40 +331,50 @@ async function handleUpdateInvoice(updatedData) {
   }
 }
 
-async function deleteInvoice(invoiceId) {
-  if (!confirm('Are you sure you want to delete this invoice?')) return
+async function confirmDelete(invoice) {
+  const message = invoice.status !== 'draft' 
+    ? `Are you sure you want to delete invoice ${invoice.invoice_no}?\n\nWarning: This will reverse all associated transactions.`
+    : `Are you sure you want to delete invoice ${invoice.invoice_no}?`;
+
+  if (!confirm(message)) {
+    return;
+  }
 
   try {
-    const response = await fetch(`${config.public.apiBase}/api/invoices/delete_invoice/${invoiceId}`, {
+    const response = await fetch(`${config.public.apiBase}/api/invoices/delete_invoice/${invoice.id}`, {
       method: 'DELETE'
-    })
+    });
 
-    const data = await response.json()
-    
     if (!response.ok) {
-      // Handle specific error cases
+      const data = await response.json();
       if (data.error_code === 'HAS_PAYMENTS') {
-        errorMessage.value = data.message
-      } else {
-        throw new Error(data.message || 'Failed to delete invoice')
+        alert(data.message);
+        return;
       }
-      return
+      throw new Error(data.message || 'Error deleting invoice');
     }
 
-    await fetchInvoices()
-    openOptionsForInvoice.value = null
+    // Remove invoice from list
+    invoices.value = invoices.value.filter(inv => inv.id !== invoice.id);
+    openOptionsForInvoice.value = null;
   } catch (error) {
-    errorMessage.value = error.message
-    console.error('Error deleting invoice:', error)
+    errorMessage.value = `Failed to delete invoice: ${error.message}`;
   }
 }
 
 async function voidInvoice(invoiceId) {
   if (!confirm('Are you sure you want to void this invoice? This action cannot be undone.')) return
 
+  const reason = prompt('Please enter a reason for voiding this invoice:', 'User requested void')
+  if (!reason) return // User cancelled the prompt
+
   try {
     const response = await fetch(`${config.public.apiBase}/api/invoices/void_invoice/${invoiceId}`, {
-      method: 'POST'
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ reason })
     })
 
     const data = await response.json()

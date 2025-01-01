@@ -76,7 +76,8 @@ class Payment:
     date: str
     amount: float
     payment_method: str
-    reference: Optional[str] = None
+    reference_number: Optional[str] = None
+    notes: Optional[str] = None
     created_at: Optional[str] = None
     transaction_id: Optional[str] = None  # Link to transaction
 
@@ -93,7 +94,8 @@ class Payment:
             date=data.get('date', ''),
             amount=float(data.get('amount', 0.0)),
             payment_method=data.get('payment_method', ''),
-            reference=data.get('reference'),
+            reference_number=data.get('reference_number'),
+            notes=data.get('notes'),
             created_at=data.get('created_at'),
             transaction_id=data.get('transaction_id')
         )
@@ -105,7 +107,8 @@ class Payment:
             'date': self.date,
             'amount': self.amount,
             'payment_method': self.payment_method,
-            'reference': self.reference,
+            'reference_number': self.reference_number,
+            'notes': self.notes,
             'created_at': self.created_at,
             'transaction_id': self.transaction_id
         }

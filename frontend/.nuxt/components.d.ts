@@ -3,6 +3,8 @@ import type { DefineComponent, SlotsType } from 'vue'
 type IslandComponent<T extends DefineComponent> = T & DefineComponent<{}, {refresh: () => Promise<void>}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, SlotsType<{ fallback: { error: unknown } }>>
 interface _GlobalComponents {
       'BaseButton': typeof import("../components/BaseButton.vue")['default']
+    'BaseEditFormModal': typeof import("../components/BaseEditFormModal.vue")['default']
+    'BaseNewFormModal': typeof import("../components/BaseNewFormModal.vue")['default']
     'EditAccountModal': typeof import("../components/EditAccountModal.vue")['default']
     'EditCustomerModal': typeof import("../components/EditCustomerModal.vue")['default']
     'EditEstimateModal': typeof import("../components/EditEstimateModal.vue")['default']
@@ -14,6 +16,7 @@ interface _GlobalComponents {
     'NewInvoiceModal': typeof import("../components/NewInvoiceModal.vue")['default']
     'NewProdServModal': typeof import("../components/NewProdServModal.vue")['default']
     'NewTransactionModal': typeof import("../components/NewTransactionModal.vue")['default']
+    'PayInvoiceModal': typeof import("../components/PayInvoiceModal.vue")['default']
     'Sidebar': typeof import("../components/Sidebar.vue")['default']
     'StatusBadge': typeof import("../components/StatusBadge.vue")['default']
     'TablePageLayout': typeof import("../components/TablePageLayout.vue")['default']
@@ -42,6 +45,8 @@ interface _GlobalComponents {
     'NuxtIsland': typeof import("../node_modules/nuxt/dist/app/components/nuxt-island")['default']
     'NuxtRouteAnnouncer': IslandComponent<typeof import("../node_modules/nuxt/dist/app/components/server-placeholder")['default']>
       'LazyBaseButton': typeof import("../components/BaseButton.vue")['default']
+    'LazyBaseEditFormModal': typeof import("../components/BaseEditFormModal.vue")['default']
+    'LazyBaseNewFormModal': typeof import("../components/BaseNewFormModal.vue")['default']
     'LazyEditAccountModal': typeof import("../components/EditAccountModal.vue")['default']
     'LazyEditCustomerModal': typeof import("../components/EditCustomerModal.vue")['default']
     'LazyEditEstimateModal': typeof import("../components/EditEstimateModal.vue")['default']
@@ -53,6 +58,7 @@ interface _GlobalComponents {
     'LazyNewInvoiceModal': typeof import("../components/NewInvoiceModal.vue")['default']
     'LazyNewProdServModal': typeof import("../components/NewProdServModal.vue")['default']
     'LazyNewTransactionModal': typeof import("../components/NewTransactionModal.vue")['default']
+    'LazyPayInvoiceModal': typeof import("../components/PayInvoiceModal.vue")['default']
     'LazySidebar': typeof import("../components/Sidebar.vue")['default']
     'LazyStatusBadge': typeof import("../components/StatusBadge.vue")['default']
     'LazyTablePageLayout': typeof import("../components/TablePageLayout.vue")['default']
@@ -87,6 +93,8 @@ declare module 'vue' {
 }
 
 export const BaseButton: typeof import("../components/BaseButton.vue")['default']
+export const BaseEditFormModal: typeof import("../components/BaseEditFormModal.vue")['default']
+export const BaseNewFormModal: typeof import("../components/BaseNewFormModal.vue")['default']
 export const EditAccountModal: typeof import("../components/EditAccountModal.vue")['default']
 export const EditCustomerModal: typeof import("../components/EditCustomerModal.vue")['default']
 export const EditEstimateModal: typeof import("../components/EditEstimateModal.vue")['default']
@@ -98,6 +106,7 @@ export const NewEstimateModal: typeof import("../components/NewEstimateModal.vue
 export const NewInvoiceModal: typeof import("../components/NewInvoiceModal.vue")['default']
 export const NewProdServModal: typeof import("../components/NewProdServModal.vue")['default']
 export const NewTransactionModal: typeof import("../components/NewTransactionModal.vue")['default']
+export const PayInvoiceModal: typeof import("../components/PayInvoiceModal.vue")['default']
 export const Sidebar: typeof import("../components/Sidebar.vue")['default']
 export const StatusBadge: typeof import("../components/StatusBadge.vue")['default']
 export const TablePageLayout: typeof import("../components/TablePageLayout.vue")['default']
@@ -126,6 +135,8 @@ export const Body: typeof import("../node_modules/nuxt/dist/head/runtime/compone
 export const NuxtIsland: typeof import("../node_modules/nuxt/dist/app/components/nuxt-island")['default']
 export const NuxtRouteAnnouncer: IslandComponent<typeof import("../node_modules/nuxt/dist/app/components/server-placeholder")['default']>
 export const LazyBaseButton: typeof import("../components/BaseButton.vue")['default']
+export const LazyBaseEditFormModal: typeof import("../components/BaseEditFormModal.vue")['default']
+export const LazyBaseNewFormModal: typeof import("../components/BaseNewFormModal.vue")['default']
 export const LazyEditAccountModal: typeof import("../components/EditAccountModal.vue")['default']
 export const LazyEditCustomerModal: typeof import("../components/EditCustomerModal.vue")['default']
 export const LazyEditEstimateModal: typeof import("../components/EditEstimateModal.vue")['default']
@@ -137,6 +148,7 @@ export const LazyNewEstimateModal: typeof import("../components/NewEstimateModal
 export const LazyNewInvoiceModal: typeof import("../components/NewInvoiceModal.vue")['default']
 export const LazyNewProdServModal: typeof import("../components/NewProdServModal.vue")['default']
 export const LazyNewTransactionModal: typeof import("../components/NewTransactionModal.vue")['default']
+export const LazyPayInvoiceModal: typeof import("../components/PayInvoiceModal.vue")['default']
 export const LazySidebar: typeof import("../components/Sidebar.vue")['default']
 export const LazyStatusBadge: typeof import("../components/StatusBadge.vue")['default']
 export const LazyTablePageLayout: typeof import("../components/TablePageLayout.vue")['default']

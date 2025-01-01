@@ -151,6 +151,7 @@
       />
       <EditEstimateModal
         v-if="isEditEstimateModalOpen"
+        :is-open="isEditEstimateModalOpen"
         :estimate="selectedEstimate"
         @close="closeEditEstimateModal"
         @update="handleUpdateEstimate"

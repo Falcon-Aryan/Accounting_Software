@@ -1,236 +1,219 @@
 <template>
-  <div v-if="props.invoice" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-[1000px] shadow-lg rounded-md bg-white">
-      <!-- Modal Header -->
-      <div class="flex justify-between items-center p-4 border-b">
-        <div>
-          <h2 class="text-xl font-semibold">Edit Invoice</h2>
-          <div v-if="props.invoice.status === 'void'" class="mt-1 text-sm text-red-600">
-            Voided: {{ props.invoice.void_reason || 'No reason provided' }}
-            <span v-if="props.invoice.voided_at" class="ml-2 text-gray-500">
-              ({{ formatDate(props.invoice.voided_at) }})
-            </span>
-          </div>
-        </div>
-        <button @click="close" class="text-gray-500 hover:text-gray-700">
-          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+  <BaseEditFormModal
+    :is-open="props.invoice !== null"
+    title="Edit Invoice"
+    width="lg"
+    @close="close"
+  >
+    <form @submit.prevent="handleSubmit">
+      <!-- Error Message -->
+      <div v-if="errorMessage" class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+        {{ errorMessage }}
+      </div>
+
+      <!-- Customer Selection -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Customer</label>
+        <select
+          v-model="form.customer_name"
+          required
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        >
+          <option value="" disabled>Select a customer</option>
+          <option value="new_customer" class="font-medium text-green-600">+ Add New Customer</option>
+          <option 
+            v-for="customer in customers" 
+            :key="customer.id"
+            :value="customer.first_name + ' ' + customer.last_name"
+          >
+            {{ customer.first_name }} {{ customer.last_name }}
+          </option>
+        </select>
+      </div>
+
+      <!-- New Customer Navigation -->
+      <div v-if="form.customer_name === 'new_customer'" class="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
+        <p class="text-sm text-green-700">
+          You'll be redirected to add a new customer. Your invoice changes will be discarded.
+        </p>
+        <button
+          type="button"
+          @click="navigateToCustomers"
+          class="mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+        >
+          Continue to Add Customer
         </button>
       </div>
 
-      <!-- Modal Body -->
-      <div class="p-6">
-        <form @submit.prevent="handleSubmit">
-          <!-- Error Message -->
-          <div v-if="errorMessage" class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-            {{ errorMessage }}
-          </div>
-
-          <!-- Customer Selection -->
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Customer</label>
-            <select
-              v-model="form.customer_name"
-              required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-            >
-              <option value="" disabled>Select a customer</option>
-              <option value="new_customer" class="font-medium text-green-600">+ Add New Customer</option>
-              <option 
-                v-for="customer in customers" 
-                :key="customer.id"
-                :value="customer.first_name + ' ' + customer.last_name"
-              >
-                {{ customer.first_name }} {{ customer.last_name }}
-              </option>
-            </select>
-          </div>
-
-          <!-- New Customer Navigation -->
-          <div v-if="form.customer_name === 'new_customer'" class="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
-            <p class="text-sm text-green-700">
-              You'll be redirected to add a new customer. Your invoice changes will be discarded.
-            </p>
-            <button
-              type="button"
-              @click="navigateToCustomers"
-              class="mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-            >
-              Continue to Add Customer
-            </button>
-          </div>
-
-          <!-- Invoice Dates -->
-          <div class="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
-              <input
-                v-model="form.invoice_date"
-                type="date"
-                required
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
-              <input
-                v-model="form.due_date"
-                type="date"
-                required
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
-          </div>
-
-          <!-- Status -->
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
-            <select
-              v-model="form.status"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-            >
-              <option value="draft">Draft</option>
-              <option value="posted">Posted</option>
-              <option value="paid">Paid</option>
-              <option value="overdue">Overdue</option>
-              <option value="void">Void</option>
-            </select>
-          </div>
-
-          <!-- Products -->
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Products</label>
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                  <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                  <tr v-for="(product, index) in form.products" :key="index">
-                    <td class="px-6 py-4">
-                      <select
-                        v-model="product.id"
-                        @change="handleProductSelect(index, $event.target.value)"
-                        required
-                        class="w-48 px-3 py-1.5 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
-                      >
-                        <option value="" disabled>Select a product</option>
-                        <option value="new_product" class="font-medium text-green-600">+ Add New Product</option>
-                        <option 
-                          v-for="prod in products" 
-                          :key="prod.id"
-                          :value="prod.id"
-                          :selected="prod.id === product.id"
-                          class="text-sm"
-                        >
-                          {{ prod.name || prod.description }}
-                        </option>
-                      </select>
-                    </td>
-                    <td class="px-6 py-4">
-                      <input
-                        v-model="product.description"
-                        type="text"
-                        class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
-                      />
-                    </td>
-                    <td class="px-6 py-4">
-                      <input
-                        v-model.number="product.price"
-                        type="number"
-                        required
-                        step="0.01"
-                        class="w-32 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
-                      />
-                    </td>
-                    <td class="px-6 py-4">
-                      <input
-                        v-model.number="product.quantity"
-                        type="number"
-                        required
-                        min="1"
-                        class="w-24 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
-                      />
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-900">
-                      {{ formatCurrency(product.price * product.quantity) }}
-                    </td>
-                    <td class="px-6 py-4">
-                      <button
-                        @click="removeProduct(index)"
-                        type="button"
-                        class="text-red-600 hover:text-red-900"
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <div class="mt-2">
-                <button
-                  type="button"
-                  @click="addProduct"
-                  class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  Add Product
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Total -->
-          <div class="mt-4 text-right">
-            <span class="text-sm font-medium text-gray-700">Total: </span>
-            <span class="text-lg font-semibold">{{ formatCurrency(calculateTotal) }}</span>
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="mt-6 flex justify-between">
-            <!-- Delete Button -->
-            <button
-              type="button"
-              @click="confirmDelete"
-              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-            >
-              Delete Invoice
-            </button>
-
-            <!-- Save/Cancel Buttons -->
-            <div class="flex space-x-3">
-              <button
-                type="button"
-                @click="close"
-                class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </form>
+      <!-- Invoice Dates -->
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
+          <input
+            v-model="form.invoice_date"
+            type="date"
+            required
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+          <input
+            v-model="form.due_date"
+            type="date"
+            required
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+          />
+        </div>
       </div>
-    </div>
-  </div>
+
+      <!-- Status -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+        <select
+          v-model="form.status"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        >
+          <option value="draft">Draft</option>
+          <option value="posted">Posted</option>
+          <option value="paid">Paid</option>
+          <option value="overdue">Overdue</option>
+          <option value="void">Void</option>
+        </select>
+      </div>
+
+      <!-- Products -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Products</label>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <tr v-for="(product, index) in form.products" :key="index">
+                <td class="px-6 py-4">
+                  <select
+                    v-model="product.id"
+                    @change="handleProductSelect(index, $event.target.value)"
+                    required
+                    class="w-48 px-3 py-1.5 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
+                  >
+                    <option value="" disabled>Select a product</option>
+                    <option value="new_product" class="font-medium text-green-600">+ Add New Product</option>
+                    <option 
+                      v-for="prod in products" 
+                      :key="prod.id"
+                      :value="prod.id"
+                      :selected="prod.id === product.id"
+                      class="text-sm"
+                    >
+                      {{ prod.name || prod.description }}
+                    </option>
+                  </select>
+                </td>
+                <td class="px-6 py-4">
+                  <input
+                    v-model="product.description"
+                    type="text"
+                    class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                </td>
+                <td class="px-6 py-4">
+                  <input
+                    v-model.number="product.price"
+                    type="number"
+                    required
+                    step="0.01"
+                    class="w-32 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                </td>
+                <td class="px-6 py-4">
+                  <input
+                    v-model.number="product.quantity"
+                    type="number"
+                    required
+                    min="1"
+                    class="w-24 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-900">
+                  {{ formatCurrency(product.price * product.quantity) }}
+                </td>
+                <td class="px-6 py-4">
+                  <button
+                    @click="removeProduct(index)"
+                    type="button"
+                    class="text-red-600 hover:text-red-900"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="mt-2">
+            <button
+              type="button"
+              @click="addProduct"
+              class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            >
+              Add Product
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Total -->
+      <div class="mt-4 text-right">
+        <span class="text-sm font-medium text-gray-700">Total: </span>
+        <span class="text-lg font-semibold">{{ formatCurrency(calculateTotal) }}</span>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-6 flex justify-between">
+        <!-- Delete Button -->
+        <button
+          type="button"
+          @click="confirmDelete"
+          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+        >
+          Delete Invoice
+        </button>
+
+        <!-- Save/Cancel Buttons -->
+        <div class="flex space-x-3">
+          <button
+            type="button"
+            @click="close"
+            class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </form>
+  </BaseEditFormModal>
 </template>
 
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRuntimeConfig } from '#app'
+import BaseEditFormModal from '~/components/BaseEditFormModal.vue'
 
 const router = useRouter()
 const config = useRuntimeConfig()

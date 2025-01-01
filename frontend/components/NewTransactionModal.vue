@@ -1,210 +1,183 @@
 <template>
-  <Teleport to="body">
-    <div v-if="show" class="fixed inset-0 z-50 overflow-y-auto">
-      <!-- Overlay -->
-      <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="close"></div>
-
-      <!-- Modal -->
-      <div class="flex items-center justify-center min-h-screen p-4">
-        <div 
-          class="relative bg-white rounded-lg shadow-xl w-full max-w-6xl mx-auto"
-          @click.stop
-        >
-          <!-- Header -->
-          <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center justify-between">
-              <h3 class="text-lg font-medium text-gray-900">Create New Transaction</h3>
-              <button
-                type="button"
-                class="text-gray-400 hover:text-gray-500"
-                @click="close"
-              >
-                <span class="sr-only">Close</span>
-                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- Body -->
-          <div class="px-6 py-4">
-            <form @submit.prevent="handleSubmit">
-              <!-- Basic Info -->
-              <div class="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Date</label>
-                  <input 
-                    type="date" 
-                    v-model="formData.date"
-                    required
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Transaction Type</label>
-                  <select 
-                    v-model="formData.transaction_type"
-                    @change="handleTypeChange"
-                    required
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                  >
-                    <option value="">Select Type</option>
-                    <option v-for="type in transactionTypes" :key="type.value" :value="type.value">
-                      {{ type.label }}
-                    </option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Sub Type</label>
-                  <select 
-                    v-model="formData.sub_type"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                    :disabled="!formData.transaction_type"
-                  >
-                    <option value="">Select Sub Type</option>
-                    <option v-for="subType in availableSubTypes" :key="subType.value" :value="subType.value">
-                      {{ subType.label }}
-                    </option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                <input 
-                  type="text"
-                  v-model="formData.description"
-                  placeholder="Enter transaction description"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                />
-              </div>
-
-              <!-- Entries -->
-              <div class="mb-4">
-                <div class="flex justify-between items-center mb-2">
-                  <label class="block text-sm font-medium text-gray-700">Entries</label>
-                  <button 
-                    type="button"
-                    @click="addDualEntry"
-                    class="px-3 py-1 text-sm text-green-600 hover:text-green-700 focus:outline-none"
-                  >
-                    Add Entry
-                  </button>
-                </div>
-
-                <div class="overflow-x-auto">
-                  <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                      <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                      <tr v-for="(entry, index) in formData.entries" :key="index">
-                        <td class="px-6 py-4">
-                          <select
-                            v-model="entry.accountId"
-                            required
-                            @change="handleAccountSelection(entry, index)"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                          >
-                            <option value="">Select Account</option>
-                            <option 
-                              v-for="account in getFilteredAccountOptions" 
-                              :key="account.value" 
-                              :value="account.value"
-                            >
-                              {{ account.label }}
-                            </option>
-                          </select>
-                        </td>
-                        <td class="px-6 py-4">
-                          <div v-if="index < 2">
-                            <span class="px-3 py-2 text-sm capitalize">{{ index === 0 ? 'debit' : 'credit' }}</span>
-                          </div>
-                          <select
-                            v-else
-                            v-model="entry.type"
-                            required
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                          >
-                            <option value="debit">Debit</option>
-                            <option value="credit">Credit</option>
-                          </select>
-                        </td>
-                        <td class="px-6 py-4">
-                          <input
-                            type="number"
-                            v-model="entry.amount"
-                            required
-                            step="0.01"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                            @input="updatePairAmount(index)"
-                          />
-                        </td>
-                        <td class="px-6 py-4">
-                          <input
-                            type="text"
-                            v-model="entry.description"
-                            placeholder="Optional"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                          />
-                        </td>
-                        <td class="px-6 py-4">
-                          <button
-                            type="button"
-                            @click="removeDualEntry(index)"
-                            class="text-red-600 hover:text-red-700"
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Error Message -->
-              <div v-if="errorMessage" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-                <p class="text-sm text-red-700">{{ errorMessage }}</p>
-              </div>
-
-              <!-- Footer -->
-              <div class="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  @click="close"
-                  class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  Create Transaction
-                </button>
-              </div>
-            </form>
-          </div>
+  <BaseNewFormModal
+    :is-open="show"
+    title="Create New Transaction"
+    width="md"
+    @close="close"
+  >
+    <form @submit.prevent="handleSubmit">
+      <!-- Basic Info -->
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Date</label>
+          <input 
+            type="date" 
+            v-model="formData.date"
+            required
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Transaction Type</label>
+          <select 
+            v-model="formData.transaction_type"
+            @change="handleTypeChange"
+            required
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+          >
+            <option value="">Select Type</option>
+            <option v-for="type in transactionTypes" :key="type.value" :value="type.value">
+              {{ type.label }}
+            </option>
+          </select>
         </div>
       </div>
-    </div>
-  </Teleport>
+
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Sub Type</label>
+          <select 
+            v-model="formData.sub_type"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+            :disabled="!formData.transaction_type"
+          >
+            <option value="">Select Sub Type</option>
+            <option v-for="subType in availableSubTypes" :key="subType.value" :value="subType.value">
+              {{ subType.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+        <input 
+          type="text"
+          v-model="formData.description"
+          placeholder="Enter transaction description"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        />
+      </div>
+
+      <!-- Entries -->
+      <div class="mb-4">
+        <div class="flex justify-between items-center mb-2">
+          <label class="block text-sm font-medium text-gray-700">Entries</label>
+          <button 
+            type="button"
+            @click="addDualEntry"
+            class="px-3 py-1 text-sm text-green-600 hover:text-green-700 focus:outline-none"
+          >
+            Add Entry
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <tr v-for="(entry, index) in formData.entries" :key="index">
+                <td class="px-6 py-4">
+                  <select
+                    v-model="entry.accountId"
+                    required
+                    @change="handleAccountSelection(entry, index)"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                  >
+                    <option value="">Select Account</option>
+                    <option 
+                      v-for="account in getFilteredAccountOptions" 
+                      :key="account.value" 
+                      :value="account.value"
+                    >
+                      {{ account.label }}
+                    </option>
+                  </select>
+                </td>
+                <td class="px-6 py-4">
+                  <div v-if="index < 2">
+                    <span class="px-3 py-2 text-sm capitalize">{{ index === 0 ? 'debit' : 'credit' }}</span>
+                  </div>
+                  <select
+                    v-else
+                    v-model="entry.type"
+                    required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                  >
+                    <option value="debit">Debit</option>
+                    <option value="credit">Credit</option>
+                  </select>
+                </td>
+                <td class="px-6 py-4">
+                  <input
+                    type="number"
+                    v-model="entry.amount"
+                    required
+                    step="0.01"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                    @input="updatePairAmount(index)"
+                  />
+                </td>
+                <td class="px-6 py-4">
+                  <input
+                    type="text"
+                    v-model="entry.description"
+                    placeholder="Optional"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                  />
+                </td>
+                <td class="px-6 py-4">
+                  <button
+                    type="button"
+                    @click="removeDualEntry(index)"
+                    class="text-red-600 hover:text-red-900"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Error Message -->
+      <div v-if="errorMessage" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+        <p class="text-sm text-red-700">{{ errorMessage }}</p>
+      </div>
+
+      <!-- Form Actions -->
+      <div class="flex justify-end space-x-3 mt-6">
+        <button
+          type="button"
+          @click="close"
+          class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+        >
+          Create Transaction
+        </button>
+      </div>
+    </form>
+  </BaseNewFormModal>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRuntimeConfig } from '#app'
+import BaseNewFormModal from '~/components/BaseNewFormModal.vue'
 
 const config = useRuntimeConfig()
 const props = defineProps({

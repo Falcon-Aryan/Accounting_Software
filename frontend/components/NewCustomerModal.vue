@@ -1,218 +1,217 @@
 <template>
-  <div v-if="modelValue" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center">
-    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4">
-      <div class="p-6">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Add New Customer</h3>
-        
-        <!-- Error Message -->
-        <div v-if="errorMessage" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-          <p class="text-sm text-red-600">{{ errorMessage }}</p>
-        </div>
-
-        <form @submit.prevent="handleSubmit" class="space-y-4">
-          <!-- Personal Information -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700">First Name</label>
-              <input
-                type="text"
-                v-model="form.first_name"
-                required
-                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Last Name</label>
-              <input
-                type="text"
-                v-model="form.last_name"
-                required
-                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-              />
-            </div>
-          </div>
-
-          <!-- Contact Information -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Email</label>
-              <input
-                type="email"
-                v-model="form.email"
-                required
-                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Phone</label>
-              <input
-                type="tel"
-                v-model="form.phone"
-                required
-                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-              />
-            </div>
-          </div>
-
-          <!-- Company Information -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Company Name</label>
-              <input
-                type="text"
-                v-model="form.company_name"
-                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Website</label>
-              <input
-                type="url"
-                v-model="form.website"
-                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-              />
-            </div>
-          </div>
-
-          <!-- Billing Address -->
-          <div>
-            <h4 class="text-sm font-medium text-gray-700 mb-2">Billing Address</h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700">Street</label>
-                <input
-                  type="text"
-                  v-model="form.billing_address.street"
-                  required
-                  class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">City</label>
-                <input
-                  type="text"
-                  v-model="form.billing_address.city"
-                  required
-                  class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">State</label>
-                <input
-                  type="text"
-                  v-model="form.billing_address.state"
-                  required
-                  class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">Postal Code</label>
-                <input
-                  type="text"
-                  v-model="form.billing_address.postal_code"
-                  required
-                  class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700">Country</label>
-                <input
-                  type="text"
-                  v-model="form.billing_address.country"
-                  required
-                  class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Shipping Address -->
-          <div>
-            <div class="flex items-center mb-2">
-              <input
-                type="checkbox"
-                v-model="form.use_billing_for_shipping"
-                class="h-4 w-4 text-blue-600 rounded border-gray-300"
-              />
-              <label class="ml-2 text-sm text-gray-700">Use billing address for shipping</label>
-            </div>
-            
-            <div v-if="!form.use_billing_for_shipping">
-              <h4 class="text-sm font-medium text-gray-700 mb-2">Shipping Address</h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="md:col-span-2">
-                  <label class="block text-sm font-medium text-gray-700">Street</label>
-                  <input
-                    type="text"
-                    v-model="form.shipping_address.street"
-                    required
-                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">City</label>
-                  <input
-                    type="text"
-                    v-model="form.shipping_address.city"
-                    required
-                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">State</label>
-                  <input
-                    type="text"
-                    v-model="form.shipping_address.state"
-                    required
-                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">Postal Code</label>
-                  <input
-                    type="text"
-                    v-model="form.shipping_address.postal_code"
-                    required
-                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">Country</label>
-                  <input
-                    type="text"
-                    v-model="form.shipping_address.country"
-                    required
-                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Form Actions -->
-          <div class="flex justify-end space-x-3">
-            <BaseButton 
-              type="button" 
-              variant="secondary"
-              @click="$emit('update:modelValue', false)"
-            >
-              Cancel
-            </BaseButton>
-            <BaseButton 
-              type="submit"
-              variant="primary"
-            >
-              Add Customer
-            </BaseButton>
-          </div>
-        </form>
-      </div>
+  <BaseNewFormModal
+    :is-open="modelValue"
+    title="Create New Customer"
+    width="md"
+    @close="$emit('update:modelValue', false)"
+  >
+    <div v-if="errorMessage" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+      <p class="text-sm text-red-600">{{ errorMessage }}</p>
     </div>
-  </div>
+
+    <form @submit.prevent="handleSubmit" class="space-y-4">
+      <!-- Personal Information -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">First Name</label>
+          <input
+            type="text"
+            v-model="form.first_name"
+            required
+            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Last Name</label>
+          <input
+            type="text"
+            v-model="form.last_name"
+            required
+            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+          />
+        </div>
+      </div>
+
+      <!-- Contact Information -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Email</label>
+          <input
+            type="email"
+            v-model="form.email"
+            required
+            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Phone</label>
+          <input
+            type="tel"
+            v-model="form.phone"
+            required
+            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+          />
+        </div>
+      </div>
+
+      <!-- Company Information -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Company Name</label>
+          <input
+            type="text"
+            v-model="form.company_name"
+            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Website</label>
+          <input
+            type="url"
+            v-model="form.website"
+            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+          />
+        </div>
+      </div>
+
+      <!-- Billing Address -->
+      <div>
+        <h4 class="text-sm font-medium text-gray-700 mb-2">Billing Address</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-gray-700">Street</label>
+            <input
+              type="text"
+              v-model="form.billing_address.street"
+              required
+              class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">City</label>
+            <input
+              type="text"
+              v-model="form.billing_address.city"
+              required
+              class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">State</label>
+            <input
+              type="text"
+              v-model="form.billing_address.state"
+              required
+              class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Postal Code</label>
+            <input
+              type="text"
+              v-model="form.billing_address.postal_code"
+              required
+              class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Country</label>
+            <input
+              type="text"
+              v-model="form.billing_address.country"
+              required
+              class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Shipping Address -->
+      <div>
+        <div class="flex items-center mb-2">
+          <input
+            type="checkbox"
+            v-model="form.use_billing_for_shipping"
+            class="h-4 w-4 text-blue-600 rounded border-gray-300"
+          />
+          <label class="ml-2 text-sm text-gray-700">Use billing address for shipping</label>
+        </div>
+        
+        <div v-if="!form.use_billing_for_shipping">
+          <h4 class="text-sm font-medium text-gray-700 mb-2">Shipping Address</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="md:col-span-2">
+              <label class="block text-sm font-medium text-gray-700">Street</label>
+              <input
+                type="text"
+                v-model="form.shipping_address.street"
+                required
+                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">City</label>
+              <input
+                type="text"
+                v-model="form.shipping_address.city"
+                required
+                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">State</label>
+              <input
+                type="text"
+                v-model="form.shipping_address.state"
+                required
+                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Postal Code</label>
+              <input
+                type="text"
+                v-model="form.shipping_address.postal_code"
+                required
+                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Country</label>
+              <input
+                type="text"
+                v-model="form.shipping_address.country"
+                required
+                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Form Actions -->
+      <div class="flex justify-end space-x-3">
+        <BaseButton 
+          type="button" 
+          variant="secondary"
+          @click="$emit('update:modelValue', false)"
+        >
+          Cancel
+        </BaseButton>
+        <BaseButton 
+          type="submit"
+          variant="primary"
+        >
+          Add Customer
+        </BaseButton>
+      </div>
+    </form>
+  </BaseNewFormModal>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue'
+import BaseNewFormModal from '~/components/BaseNewFormModal.vue'
 import BaseButton from './BaseButton.vue'
 
 const props = defineProps({

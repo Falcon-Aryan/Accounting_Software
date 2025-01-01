@@ -128,15 +128,14 @@
               @click.stop
             >
               <div class="flex flex-col" role="menu">
-                <!-- Edit Option -->
-                <div class="py-1">
+                <!-- Pay Invoice Option -->
+                <div v-if="invoice.status !== 'void' && invoice.balance_due > 0" class="py-1">
                   <button
-                    @click="editInvoice(invoice)"
-                    class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:text-gray-400 disabled:hover:bg-white disabled:cursor-not-allowed"
+                    @click="payInvoice(invoice)"
+                    class="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-gray-100"
                     role="menuitem"
-                    :disabled="invoice.status === 'void'"
                   >
-                    Edit
+                    Pay Invoice
                   </button>
                 </div>
 
@@ -151,8 +150,20 @@
                   </button>
                 </div>
 
-                <!-- Void Option - Only for posted/overdue invoices -->
-                <div v-if="invoice.status !== 'void' && invoice.status !== 'draft'" class="py-1 border-t border-gray-100">
+                <!-- Edit Option -->
+                <div class="py-1 border-t border-gray-100">
+                  <button
+                    @click="editInvoice(invoice)"
+                    class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    role="menuitem"
+                    :disabled="invoice.status === 'void'"
+                  >
+                    Edit
+                  </button>
+                </div>
+
+                <!-- Void Option -->
+                <div v-if="invoice.status !== 'void'" class="py-1 border-t border-gray-100">
                   <button
                     @click="voidInvoice(invoice.id)"
                     class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
@@ -162,7 +173,7 @@
                   </button>
                 </div>
 
-                <!-- Delete Option - Only for draft invoices -->
+                <!-- Delete Option -->
                 <div class="py-1 border-t border-gray-100">
                   <button
                     @click="confirmDelete(invoice)"
@@ -190,8 +201,15 @@
     <EditInvoiceModal
       v-if="selectedInvoice"
       :invoice="selectedInvoice"
+      :is-open="showEditInvoiceModal"
       @close="closeEditInvoiceModal"
-      @update="handleUpdateInvoice"
+      @save="handleUpdateInvoice"
+    />
+    <PayInvoiceModal
+      :show="showPayInvoiceModal"
+      :invoice="selectedPaymentInvoice"
+      @close="closePayInvoiceModal"
+      @payment-recorded="handlePaymentRecorded"
     />
   </Teleport>
 </template>
@@ -200,9 +218,10 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRuntimeConfig } from '#app'
 import TablePageLayout from '~/components/TablePageLayout.vue'
+import BaseButton from '~/components/BaseButton.vue'
 import NewInvoiceModal from '~/components/NewInvoiceModal.vue'
 import EditInvoiceModal from '~/components/EditInvoiceModal.vue'
-import BaseButton from '~/components/BaseButton.vue'
+import PayInvoiceModal from '~/components/PayInvoiceModal.vue'
 import { Teleport } from 'vue'
 
 const config = useRuntimeConfig()
@@ -211,9 +230,12 @@ const searchQuery = ref('')
 const selectedStatus = ref('All')
 const showNewInvoiceModal = ref(false)
 const selectedInvoice = ref(null)
+const selectedPaymentInvoice = ref(null)
 const openOptionsForInvoice = ref(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
+const showPayInvoiceModal = ref(false)
+const showEditInvoiceModal = ref(false)
 
 // Close dropdown when clicking outside
 const handleClickOutside = (event) => {
@@ -298,17 +320,21 @@ function formatCurrency(amount) {
 }
 
 function toggleOptions(invoiceId, event) {
-  event?.stopPropagation()
+  event.stopPropagation()
   openOptionsForInvoice.value = openOptionsForInvoice.value === invoiceId ? null : invoiceId
 }
 
 function editInvoice(invoice) {
+  showPayInvoiceModal.value = false
+  showNewInvoiceModal.value = false
   selectedInvoice.value = invoice
   openOptionsForInvoice.value = null
+  showEditInvoiceModal.value = true
 }
 
 function closeEditInvoiceModal() {
   selectedInvoice.value = null
+  showEditInvoiceModal.value = false
 }
 
 async function handleUpdateInvoice(updatedData) {
@@ -398,14 +424,11 @@ async function voidInvoice(invoiceId) {
 
 async function postInvoice(invoiceId) {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/invoices/update_invoice/${invoiceId}`, {
-      method: 'PATCH',
+    const response = await fetch(`${config.public.apiBase}/api/invoices/post_invoice/${invoiceId}`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        status: 'posted'
-      })
+      }
     })
 
     if (!response.ok) {
@@ -423,6 +446,8 @@ async function postInvoice(invoiceId) {
 }
 
 function openNewInvoiceModal() {
+  showEditInvoiceModal.value = false
+  showPayInvoiceModal.value = false
   showNewInvoiceModal.value = true
 }
 
@@ -448,6 +473,25 @@ async function handleCreateInvoice(invoiceData) {
     errorMessage.value = error.message
     console.error('Error creating invoice:', error)
   }
+}
+
+function payInvoice(invoice) {
+  showEditInvoiceModal.value = false
+  showNewInvoiceModal.value = false
+  selectedPaymentInvoice.value = invoice
+  openOptionsForInvoice.value = null
+  showPayInvoiceModal.value = true
+}
+
+function closePayInvoiceModal() {
+  selectedPaymentInvoice.value = null
+  showPayInvoiceModal.value = false
+}
+
+async function handlePaymentRecorded(result) {
+  await fetchInvoices()
+  showPayInvoiceModal.value = false
+  selectedPaymentInvoice.value = null
 }
 
 // Watch for changes in search query or status to refresh invoices

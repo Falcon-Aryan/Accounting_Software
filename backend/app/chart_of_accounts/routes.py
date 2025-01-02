@@ -249,21 +249,15 @@ def get_account_types():
 @chart_of_accounts_bp.route('/detail-types/<account_type>', methods=['GET'])
 def get_detail_types(account_type):
     """Get valid detail types for a given account type"""
-    print(f"Debug: Received request for account type: {account_type}")
-    
     from .models import ACCOUNT_TYPE_DETAILS
-    print(f"Debug: Available account types: {list(ACCOUNT_TYPE_DETAILS.keys())}")
     
     try:
         if account_type not in ACCOUNT_TYPE_DETAILS:
-            print(f"Debug: Invalid account type: {account_type}")
             return jsonify({'error': 'Invalid account type'}), 400
             
         detail_types = ACCOUNT_TYPE_DETAILS[account_type]
-        print(f"Debug: Found detail types: {detail_types}")
         return jsonify({'detail_types': detail_types}), 200
     except Exception as e:
-        print(f"Debug: Error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @chart_of_accounts_bp.route('/accounts_by_type', methods=['GET'])
@@ -385,3 +379,82 @@ def validate_account_transaction(account_id):
         
     except Exception as e:
         return jsonify({'message': f'Error validating transaction: {str(e)}'}), 500
+
+@chart_of_accounts_bp.route('/recalculate-balances', methods=['POST'])
+def recalculate_balances():
+    """Recalculate all account balances from transactions"""
+    try:
+        # Load chart of accounts
+        chart_data = load_chart_of_accounts()
+        accounts = chart_data.get('accounts', [])
+        
+        # Reset all balances to 0
+        for account in accounts:
+            account['currentBalance'] = 0
+            account['lastTransactionDate'] = None
+            
+        # Load transactions
+        with open(os.path.join(DATA_DIR, 'transactions.json'), 'r') as f:
+            transactions_data = json.load(f)
+            transactions = transactions_data.get('transactions', [])
+            
+        # Process only posted transactions
+        posted_transactions = [t for t in transactions if t.get('status') == 'posted']
+        posted_transactions.sort(key=lambda x: x.get('date', ''))  # Sort by date
+        
+        # Update balances from transactions
+        for transaction in posted_transactions:
+            for entry in transaction.get('entries', []):
+                account_id = entry.get('accountId')
+                entry_type = entry.get('type')
+                amount = float(entry.get('amount', 0))
+                
+                # Find the account
+                account = next((acc for acc in accounts if acc['id'] == account_id), None)
+                if account:
+                    # Get normal balance type
+                    normal_balance = account.get('normalBalanceType', 'debit')
+                    current_balance = float(account.get('currentBalance', 0))
+                    
+                    # Update balance based on entry type and normal balance type
+                    if normal_balance == 'debit':
+                        # For debit-normal accounts:
+                        # Debit increases the balance, Credit decreases it
+                        if entry_type == 'debit':
+                            account['currentBalance'] = current_balance + amount
+                        else:  # credit
+                            account['currentBalance'] = current_balance - amount
+                    else:  # credit normal
+                        # For credit-normal accounts:
+                        # Credit increases the balance, Debit decreases it
+                        if entry_type == 'credit':
+                            account['currentBalance'] = current_balance + amount
+                        else:  # debit
+                            account['currentBalance'] = current_balance - amount
+                        
+                    # Update last transaction date
+                    account['lastTransactionDate'] = transaction.get('date')
+        
+        # Update summary
+        summary = {
+            'total_assets': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType', '').startswith('Bank') or acc.get('accountType') == 'Accounts Receivable'),
+            'total_liabilities': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType') == 'Accounts payable'),
+            'total_equity': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType', '').startswith('Equity')),
+            'total_income': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType') == 'Income'),
+            'total_expense': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType') == 'Expense'),
+            'last_updated': datetime.utcnow().isoformat()
+        }
+        
+        chart_data['summary'] = summary
+        
+        # Save updated chart of accounts
+        with open(os.path.join(DATA_DIR, 'chart_of_accounts.json'), 'w') as f:
+            json.dump(chart_data, f, indent=2)
+            
+        return jsonify({
+            'message': 'Account balances recalculated successfully',
+            'summary': summary
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'message': f'Error recalculating balances: {str(e)}'}), 500

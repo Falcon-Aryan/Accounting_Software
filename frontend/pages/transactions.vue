@@ -4,7 +4,7 @@
     :error-message="errorMessage"
     :is-loading="isLoading"
     :has-data="filteredTransactions.length > 0"
-    :column-count="7"
+    :column-count="8"
     empty-state-message="No transactions found. Create a new transaction to get started."
   >
     <!-- Search Filter -->
@@ -84,6 +84,9 @@
           Amount
         </th>
         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+          Payment Status
+        </th>
+        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
           Actions
         </th>
       </tr>
@@ -106,6 +109,29 @@
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
           {{ formatAmount(getTotalAmount(transaction)) }}
+        </td>
+        <td v-if="transaction.reference_type === 'invoice' || transaction.reference_type === 'invoice_payment'" class="px-6 py-4 whitespace-nowrap">
+          <div class="flex flex-col space-y-1">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" 
+                  :class="{
+                    'bg-green-100 text-green-800': transaction.invoice_status === 'paid',
+                    'bg-yellow-100 text-yellow-800': transaction.invoice_status === 'partially_paid',
+                    'bg-gray-100 text-gray-800': !transaction.invoice_status || transaction.invoice_status === 'unknown'
+                  }">
+              {{ transaction.invoice_status ? transaction.invoice_status.replace('_', ' ') : 'N/A' }}
+            </span>
+            <div v-if="transaction.invoice_total" class="text-xs text-gray-500">
+              <div>Total: {{ formatAmount(transaction.invoice_total) }}</div>
+              <div>Paid: {{ formatAmount(transaction.invoice_paid || 0) }}</div>
+              <div>Balance: {{ formatAmount(transaction.invoice_balance || 0) }}</div>
+              <div v-if="transaction.last_payment_date" class="text-xs text-gray-400">
+                Last Payment: {{ formatDate(transaction.last_payment_date) }}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td v-else class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          -
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
           <div class="relative inline-block text-left options-container">

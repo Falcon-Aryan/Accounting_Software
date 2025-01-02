@@ -91,7 +91,10 @@
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
           <div>Opening: {{ formatCurrency(account.openingBalance || 0) }}</div>
-          <div>Current: {{ formatCurrency(account.quickbooksBalance || 0) }}</div>
+          <div>Current: {{ formatCurrency(account.currentBalance || 0) }}</div>
+          <div v-if="account.lastTransactionDate" class="text-xs text-gray-400">
+            Last Updated: {{ new Date(account.lastTransactionDate).toLocaleDateString() }}
+          </div>
           <span
             :class="[
               'px-2 inline-flex text-xs leading-5 font-semibold rounded-full',
@@ -280,6 +283,7 @@ const openOptionsId = ref(null)
 const isEditAccountModalOpen = ref(false)
 const selectedAccount = ref(null)
 const searchQuery = ref('')
+const isRecalculating = ref(false)
 
 async function fetchAccounts() {
   try {
@@ -432,15 +436,48 @@ async function handleDeleteAccount(accountId) {
   }
 }
 
-onMounted(() => {
-  fetchAccounts()
+async function recalculateBalances() {
+  try {
+    isRecalculating.value = true
+    const response = await fetch(`${config.public.apiBase}/api/coa/recalculate-balances`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to recalculate balances')
+    }
+    
+    const result = await response.json()
+    console.log('Account balances recalculated successfully')
+    
+    // Refresh the accounts list
+    await fetchAccounts()
+    
+  } catch (error) {
+    console.error('Error recalculating balances:', error)
+  } finally {
+    isRecalculating.value = false
+  }
+}
+
+onMounted(async () => {
+  // First recalculate balances
+  await recalculateBalances()
+  // Then fetch accounts to get the updated data
+  await fetchAccounts()
   
   // Close dropdown when clicking outside
   document.addEventListener('click', (event) => {
-    const target = event.target
-    if (!target.closest('.relative')) {
-      openOptionsId.value = null
+    if (openOptionsId.value !== null) {
+      const dropdown = document.querySelector(`[data-account-id="${openOptionsId.value}"]`)
+      if (dropdown && !dropdown.contains(event.target)) {
+        openOptionsId.value = null
+      }
     }
   })
 })
+
 </script>

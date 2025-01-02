@@ -9,7 +9,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 150.0,
+      "lastTransactionDate": "2025-01-01",
+      "normalBalanceType": "debit"
     },
     {
       "id": "1002-0001",
@@ -20,7 +23,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "1100-0001",
@@ -31,7 +37,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 50.0,
+      "lastTransactionDate": "2025-01-01",
+      "normalBalanceType": "debit"
     },
     {
       "id": "1200-0001",
@@ -42,7 +51,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "1201-0001",
@@ -53,7 +65,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "1500-0001",
@@ -64,7 +79,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "2000-0001",
@@ -75,7 +93,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "credit"
     },
     {
       "id": "2100-0001",
@@ -86,7 +107,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "credit"
     },
     {
       "id": "2200-0001",
@@ -97,7 +121,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "credit"
     },
     {
       "id": "2201-0001",
@@ -108,7 +135,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "credit"
     },
     {
       "id": "3000-0001",
@@ -119,7 +149,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "credit"
     },
     {
       "id": "3100-0001",
@@ -130,7 +163,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "credit"
     },
     {
       "id": "4000-0001",
@@ -141,7 +177,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 200.0,
+      "lastTransactionDate": "2025-01-01",
+      "normalBalanceType": "credit"
     },
     {
       "id": "4100-0001",
@@ -152,7 +191,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "credit"
     },
     {
       "id": "5000-0001",
@@ -163,7 +205,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "6000-0001",
@@ -174,7 +219,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "6001-0001",
@@ -185,7 +233,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "6002-0001",
@@ -196,7 +247,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "6003-0001",
@@ -207,7 +261,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "6004-0001",
@@ -218,7 +275,10 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     },
     {
       "id": "6005-0001",
@@ -229,14 +289,18 @@
       "openingBalance": 0.0,
       "quickbooksBalance": 0.0,
       "active": true,
-      "isDefault": true
+      "isDefault": true,
+      "currentBalance": 0,
+      "lastTransactionDate": null,
+      "normalBalanceType": "debit"
     }
   ],
   "summary": {
-    "totalAccounts": 21,
-    "activeAccounts": 21,
-    "inactiveAccounts": 0,
-    "totalDebit": 0,
-    "totalCredit": 0
+    "total_assets": 200.0,
+    "total_liabilities": 0,
+    "total_equity": 0,
+    "total_income": 200.0,
+    "total_expense": 0,
+    "last_updated": "2025-01-01T16:47:14.373994"
   }
 }

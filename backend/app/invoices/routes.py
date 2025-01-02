@@ -10,7 +10,7 @@ from . import invoices_bp
 from .models import Invoice, InvoicesSummary, Payment, INVOICE_STATUSES, PAYMENT_METHODS, PAYMENT_TERMS
 from app.transactions.models import Transaction, TransactionType, TransactionSubType, TransactionEntry
 from app.chart_of_accounts.models import Account
-from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions
+from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions, post_transaction
 from app.chart_of_accounts.routes import load_chart_of_accounts
 from app.products.routes import load_products
 
@@ -226,13 +226,9 @@ def validate_account_id(account_id: str, account_type: str) -> str:
 def create_invoice_transaction(invoice_data: Dict, sub_type: str = 'invoice_draft') -> None:
     """Create a transaction record for an invoice"""
     try:
-        print(f"Creating invoice transaction for invoice {invoice_data.get('invoice_no')}")
-        print(f"Products: {json.dumps(invoice_data.get('products', []), indent=2)}")
-        
         # Calculate total amount
         total_amount = sum(float(p.get('price', 0)) * float(p.get('quantity', 0)) 
                           for p in invoice_data.get('products', []))
-        print(f"Total amount: {total_amount}")
 
         # Create entries list
         entries = []
@@ -256,20 +252,13 @@ def create_invoice_transaction(invoice_data: Dict, sub_type: str = 'invoice_draf
         # Add COGS entries only for inventory items
         total_cost = 0
         for product in invoice_data.get('products', []):
-            print(f"Processing product: {product.get('name')}")
-            print(f"Product type: {product.get('type')}")
-            print(f"Product cost price: {product.get('cost_price')}")
             if product.get('type') == 'inventory_item':
-                print("Found inventory item!")
                 cost_price = float(product.get('cost_price', 0))
                 quantity = float(product.get('quantity', 0))
                 cost_amount = cost_price * quantity
                 total_cost += cost_amount
-                print(f"Cost amount for {product.get('name')}: {cost_amount}")
         
-        print(f"Total cost: {total_cost}")
         if total_cost > 0:
-            print("Adding COGS entries")
             entries.extend([
                 {
                     'accountId': COGS_ID,
@@ -284,8 +273,6 @@ def create_invoice_transaction(invoice_data: Dict, sub_type: str = 'invoice_draf
                     'description': f"Invoice {invoice_data['invoice_no']} - Inventory Reduction"
                 }
             ])
-        
-        print(f"Final entries: {json.dumps(entries, indent=2)}")
         
         # Create transaction
         transaction_data = {
@@ -303,7 +290,6 @@ def create_invoice_transaction(invoice_data: Dict, sub_type: str = 'invoice_draf
         }
         create_transaction_direct(transaction_data)
     except Exception as e:
-        print(f"Error creating invoice transaction: {str(e)}")
         raise
 
 def update_invoice_transaction(invoice_data: Dict, sub_type: str) -> None:
@@ -323,16 +309,17 @@ def update_invoice_transaction(invoice_data: Dict, sub_type: str) -> None:
         raise
 
 def delete_invoice_transaction(invoice_id: str) -> None:
-    """Delete the transaction record for an invoice"""
+    """Delete the transaction record for an invoice and its payments"""
     try:
         transactions = load_transactions()
+        # Remove both invoice and payment transactions
         transactions['transactions'] = [t for t in transactions['transactions'] 
-                                     if not (t.get('reference_type') == 'invoice' and 
-                                           t.get('reference_id') == invoice_id)]
+                                     if not ((t.get('reference_type') == 'invoice' and t.get('reference_id') == invoice_id) or
+                                           (t.get('transaction_type') == TransactionType.PAYMENT_RECEIVED.value and 
+                                            t.get('reference_id', '').startswith(f"{invoice_id}_")))]
         save_transactions(transactions)
     except Exception as e:
         print(f"Error deleting invoice transaction: {str(e)}")
-        raise
 
 # Interface Routes
 @invoices_bp.route('/status_types', methods=['GET'])
@@ -551,7 +538,6 @@ def add_payment(id):
 
     try:
         payment_data = request.get_json()
-        print(f"Received payment data: {json.dumps(payment_data, indent=2)}")
         
         # Load invoice
         invoices_data = load_invoices()
@@ -604,12 +590,14 @@ def add_payment(id):
             'entries': [
                 {
                     'accountId': cash_account,
+                    'accountName': 'Business Checking',  
                     'amount': payment.amount,
                     'type': 'debit',
                     'description': f"Cash Receipt - Invoice {invoice['invoice_no']}"
                 },
                 {
-                    'accountId': ar_account,
+                    'accountId': ACCOUNTS_RECEIVABLE_ID,
+                    'accountName': 'Accounts Receivable',  
                     'amount': payment.amount,
                     'type': 'credit',
                     'description': f"Payment Applied - Invoice {invoice['invoice_no']}"
@@ -632,13 +620,49 @@ def add_payment(id):
         invoice['payments'].append(payment.to_dict())
         
         # Update balance due
-        invoice['balance_due'] = float(invoice['total_amount']) - (total_paid + payment.amount)
+        new_balance = float(invoice['total_amount']) - (total_paid + payment.amount)
+        invoice['balance_due'] = new_balance
         
         # Update last payment date
         invoice['last_payment_date'] = payment.date
         
-        # Update invoice status
-        check_and_update_status(invoice)
+        # Load transactions to update invoice transaction status
+        transactions_data = load_transactions()
+        
+        # Find and update the invoice transaction
+        invoice_transaction = next(
+            (t for t in transactions_data['transactions'] 
+            if t['reference_type'] == 'invoice' 
+            and t['reference_id'] == id 
+            and t['status'] == 'posted'),
+            None
+        )
+        
+        # Find and update the payment transaction
+        payment_transaction = next(
+            (t for t in transactions_data['transactions'] 
+            if t['reference_type'] == 'invoice_payment' 
+            and t['reference_id'] == f"{id}_{payment_id}" 
+            and t['status'] == 'posted'),
+            None
+        )
+        
+        # Update statuses based on payment
+        if new_balance <= 0:
+            invoice['status'] = 'paid'
+            if invoice_transaction:
+                invoice_transaction['sub_type'] = TransactionSubType.INVOICE_PAID.value
+            if payment_transaction:
+                payment_transaction['sub_type'] = TransactionSubType.CASH_PAYMENT.value
+        elif new_balance < float(invoice['total_amount']):
+            invoice['status'] = 'partially_paid'
+            if invoice_transaction:
+                invoice_transaction['sub_type'] = TransactionSubType.INVOICE_PARTIALLY_PAID.value
+            if payment_transaction:
+                payment_transaction['sub_type'] = TransactionSubType.CASH_PAYMENT.value
+        
+        # Save transactions
+        save_transactions(transactions_data)
         
         # Update summary
         invoices_data['summary'] = update_summary(invoices_data['invoices']).to_dict()
@@ -649,10 +673,8 @@ def add_payment(id):
         return jsonify(payment.to_dict()), 201
         
     except ValueError as e:
-        print(f"Validation error: {str(e)}")
         return jsonify({'message': str(e)}), 400
     except Exception as e:
-        print(f"Error adding payment: {str(e)}")
         return jsonify({'message': f'Error adding payment: {str(e)}'}), 500
 
 @invoices_bp.route('/get_payments/<string:id>', methods=['GET'])
@@ -706,94 +728,83 @@ def void_invoice(id):
                 'error_code': 'ALREADY_VOIDED'
             }), 400
             
-        # Create void transaction
-        try:
-            # Group products by income accounts for consolidated entries
-            income_totals = {}
-            for product in invoice['products']:
-                income_account = validate_account_id(
-                    product.get('income_account_id', SALES_REVENUE_ID),
-                    'income'
-                )
-                amount = float(product['price']) * float(product['quantity'])
-                income_totals[income_account] = income_totals.get(income_account, 0) + amount
-
-            # Create void transaction entries
-            void_entries = []
+        # Find and void the original transaction
+        transactions_data = load_transactions()
+        original_transaction = None
+        if transactions_data and 'transactions' in transactions_data:
+            for transaction in transactions_data['transactions']:
+                if (transaction['reference_type'] == 'invoice' 
+                    and transaction['reference_id'] == id 
+                    and transaction['transaction_type'] == TransactionType.INVOICE.value
+                    and transaction['status'] != 'void'):
+                    original_transaction = transaction
+                    transaction['status'] = 'void'
+                    transaction['voided_at'] = datetime.utcnow().isoformat()
+                    transaction['voided_by'] = 'system'
+                    transaction['void_reason'] = request.get_json().get('reason', 'User requested void')
+                    break
             
-            # Add debit entries for each income account (reverse the credits)
-            for account_id, amount in income_totals.items():
-                void_entries.append({
-                    'accountId': account_id,
-                    'amount': amount,
-                    'type': 'debit',
-                    'description': f"Void - Sales Revenue - Invoice {invoice.get('invoice_no')}"
-                })
+            if not original_transaction:
+                return jsonify({
+                    'message': 'Original transaction not found',
+                    'error_code': 'TRANSACTION_NOT_FOUND'
+                }), 404
 
-            # Add credit entry to AR (reverse the debit)
-            void_entries.append({
-                'accountId': ACCOUNTS_RECEIVABLE_ID,
-                'amount': invoice.get('total_amount', 0),
-                'type': 'credit',
-                'description': f"Void - Accounts Receivable - Invoice {invoice.get('invoice_no')}"
-            })
+            try:
+                # Create void transaction to reverse the original
+                void_entries = []
+                for entry in original_transaction['entries']:
+                    # Reverse the entry type (debit -> credit, credit -> debit)
+                    reversed_type = 'credit' if entry['type'] == 'debit' else 'debit'
+                    void_entries.append({
+                        'accountId': entry['accountId'],
+                        'amount': entry['amount'],
+                        'type': reversed_type,
+                        'description': f"Void - {entry['description']}"
+                    })
 
-            # Create the void transaction
-            void_transaction = {
-                'date': datetime.utcnow().date().isoformat(),
-                'description': f"Void Invoice {invoice.get('invoice_no')}",
-                'transaction_type': TransactionType.INVOICE.value,
-                'reference_type': 'invoice_void',
-                'reference_id': f"{id}_void",
-                'status': 'posted',
-                'customer_name': invoice.get('customer_name'),
-                'products': invoice.get('products', []),
-                'entries': void_entries,
-                'amount': invoice.get('total_amount', 0),
-                'void_reason': request.get_json().get('reason', 'User requested void')
-            }
-            
-            # Create the void transaction
-            create_transaction_direct(void_transaction)
-            
-            # Find and void the original transaction
-            transactions_data = load_transactions()
-            if transactions_data and 'transactions' in transactions_data:
-                for transaction in transactions_data['transactions']:
-                    if (transaction['reference_type'] == 'invoice' 
-                        and transaction['reference_id'] == id 
-                        and transaction['transaction_type'] == TransactionType.INVOICE.value
-                        and transaction['status'] != 'void'):
-                        transaction['status'] = 'void'
-                        transaction['voided_at'] = datetime.utcnow().isoformat()
-                        transaction['voided_by'] = 'system'
-                        transaction['void_reason'] = request.get_json().get('reason', 'User requested void')
+                # Create the void transaction
+                void_transaction = {
+                    'date': datetime.utcnow().date().isoformat(),
+                    'description': f"Void Invoice {invoice['invoice_no']}",
+                    'transaction_type': TransactionType.INVOICE.value,
+                    'reference_type': 'invoice_void',
+                    'reference_id': f"{id}_void",
+                    'status': 'posted',
+                    'customer_name': invoice.get('customer_name'),
+                    'products': invoice.get('products', []),
+                    'entries': void_entries,
+                    'amount': invoice.get('total_amount', 0),
+                    'void_reason': request.get_json().get('reason', 'User requested void')
+                }
                 
+                # Create the void transaction
+                create_transaction_direct(void_transaction)
                 save_transactions(transactions_data)
             
-            # Update invoice status
-            invoice['status'] = 'void'
-            invoice['voided_at'] = datetime.utcnow().isoformat()
-            invoice['updated_at'] = datetime.utcnow().isoformat()
-            invoice['void_reason'] = request.get_json().get('reason', 'User requested void')
-            
-            # Save changes
-            invoices_data['summary'] = update_summary(invoices_data['invoices']).to_dict()
-            if not save_invoices(invoices_data):
+                # Update invoice status
+                invoice['status'] = 'void'
+                invoice['voided_at'] = datetime.utcnow().isoformat()
+                invoice['updated_at'] = datetime.utcnow().isoformat()
+                invoice['void_reason'] = request.get_json().get('reason', 'User requested void')
+                
+                # Save changes
+                invoices_data['summary'] = update_summary(invoices_data['invoices']).to_dict()
+                if not save_invoices(invoices_data):
+                    return jsonify({
+                        'message': 'Failed to save voided invoice',
+                        'error_code': 'SAVE_FAILED'
+                    }), 500
+                    
+                return jsonify(invoice), 200
+                
+            except Exception as e:
+                print(f"Error voiding invoice transaction: {str(e)}")
                 return jsonify({
-                    'message': 'Failed to save voided invoice',
-                    'error_code': 'SAVE_FAILED'
+                    'message': f'Error voiding invoice transaction: {str(e)}',
+                    'error_code': 'VOID_TRANSACTION_ERROR'
                 }), 500
                 
-            return jsonify(invoice), 200
-            
-        except Exception as e:
-            print(f"Error voiding invoice transaction: {str(e)}")
-            return jsonify({
-                'message': f'Error voiding invoice transaction: {str(e)}',
-                'error_code': 'VOID_TRANSACTION_ERROR'
-            }), 500
-            
     except Exception as e:
         print(f"Error voiding invoice: {str(e)}")
         return jsonify({
@@ -803,7 +814,7 @@ def void_invoice(id):
 
 @invoices_bp.route('/post_invoice/<id>', methods=['POST'])
 def post_invoice(id):
-    """Post an invoice, making it final and creating official journal entries"""
+    """Post an invoice, making it final and updating the chart of accounts"""
     try:
         # Load invoices data
         invoices_data = load_invoices()
@@ -817,12 +828,32 @@ def post_invoice(id):
         if invoice['status'] != 'draft':
             return jsonify({'message': f"Cannot post invoice with status '{invoice['status']}'. Only draft invoices can be posted."}), 400
             
-        # Update invoice status and create official transaction
+        # Load transactions to find the draft transaction for this invoice
+        transactions_data = load_transactions()
+        transaction = next(
+            (t for t in transactions_data['transactions'] 
+            if t['reference_type'] == 'invoice' 
+            and t['reference_id'] == id 
+            and t['status'] == 'draft'),
+            None
+        )
+        
+        if not transaction:
+            return jsonify({'message': 'Draft transaction not found for this invoice'}), 404
+            
+        # Update transaction status to posted (this will trigger account updates)
+        transaction['sub_type'] = 'invoice_posted'
+        if not save_transactions(transactions_data):
+            return jsonify({'message': 'Failed to update transaction'}), 500
+            
+        # Post the transaction (this will update the chart of accounts)
+        response = post_transaction(transaction['id'])
+        if response.status_code != 200:
+            return response
+            
+        # Update invoice status
         invoice['status'] = 'posted'
         invoice['updated_at'] = datetime.utcnow().isoformat()
-        
-        # Create posted transaction (this will replace the draft transaction)
-        create_invoice_transaction(invoice, sub_type='invoice_posted')
         
         # Update summary
         invoices_data['summary'] = update_summary(invoices_data['invoices']).to_dict()

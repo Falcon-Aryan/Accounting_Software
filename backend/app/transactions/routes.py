@@ -211,6 +211,12 @@ def create_transaction_direct(transaction_data: dict):
         if not save_transactions(transactions_data):
             raise Exception('Failed to save transaction')
         
+        # If transaction is posted, update account balances
+        if transaction.status == 'posted':
+            success, error = update_account_balances(transaction)
+            if not success:
+                raise Exception(f"Failed to update account balances: {error}")
+        
         return transaction.to_dict()
         
     except Exception as e:
@@ -256,6 +262,158 @@ def get_valid_account_types(transaction_type: str, sub_type: str) -> List[str]:
         'adjustment': ['Other Current Asset', 'Income', 'Expense']
     }
     return valid_types.get(transaction_type, [])
+
+def update_account_balances(transaction: Transaction) -> tuple[bool, Optional[str]]:
+    """Update account balances in the chart of accounts when posting a transaction"""
+    try:
+        # Load chart of accounts
+        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+            chart_data = json.load(f)
+            accounts = chart_data.get('accounts', [])
+            
+        # Track which accounts were updated
+        updated_accounts = set()
+        total_assets = 0
+        total_liabilities = 0
+        total_equity = 0
+        total_income = 0
+        total_expense = 0
+        
+        # Update each account's balance based on transaction entries
+        for entry in transaction.entries:
+            account_index = None
+            for i, acc in enumerate(accounts):
+                if acc['id'] == entry.accountId:
+                    account_index = i
+                    break
+                    
+            if account_index is None:
+                return False, f"Account {entry.accountId} not found"
+                
+            account = accounts[account_index]
+            
+            # Validate if account is active
+            if not account.get('active', True):
+                return False, f"Account {entry.accountId} is inactive"
+                
+            # Get normal balance type
+            normal_balance = account.get('normalBalanceType', 'debit')
+            current_balance = float(account.get('currentBalance', 0))
+            
+            # Calculate balance change based on normal balance type
+            if normal_balance == 'debit':
+                # For debit-normal accounts:
+                # Debit increases the balance, Credit decreases it
+                if entry.type == 'debit':
+                    account['currentBalance'] = current_balance + entry.amount
+                else:  # credit
+                    account['currentBalance'] = current_balance - entry.amount
+            else:  # credit normal
+                # For credit-normal accounts:
+                # Credit increases the balance, Debit decreases it
+                if entry.type == 'credit':
+                    account['currentBalance'] = current_balance + entry.amount
+                else:  # debit
+                    account['currentBalance'] = current_balance - entry.amount
+                
+            # Update last transaction date
+            account['lastTransactionDate'] = transaction.date
+            
+            # Mark account as updated
+            updated_accounts.add(account['id'])
+            
+            # Update totals based on account type
+            account_type = account.get('accountType', '')
+            balance = float(account.get('currentBalance', 0))
+            
+            if account_type in ['Bank', 'Other Current Asset', 'Fixed Asset']:
+                total_assets += balance
+            elif account_type in ['Credit Card', 'Accounts Payable', 'Other Current Liability', 'Long Term Liability']:
+                total_liabilities += balance
+            elif account_type == 'Equity':
+                total_equity += balance
+            elif account_type == 'Income':
+                total_income += balance
+            elif account_type in ['Cost of Goods Sold', 'Expense']:
+                total_expense += balance
+        
+        # Update summary
+        chart_data['summary'] = {
+            'total_assets': total_assets,
+            'total_liabilities': total_liabilities,
+            'total_equity': total_equity,
+            'total_income': total_income,
+            'total_expense': total_expense,
+            'last_updated': datetime.utcnow().isoformat()
+        }
+        
+        # Save changes
+        with open(CHART_OF_ACCOUNTS_FILE, 'w') as f:
+            json.dump(chart_data, f, indent=2)
+            
+        return True, None
+        
+    except Exception as e:
+        return False, str(e)
+
+def reverse_account_balances(transaction: Transaction) -> tuple[bool, Optional[str]]:
+    """Reverse account balances in the chart of accounts when voiding a transaction"""
+    try:
+        # Load chart of accounts
+        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+            chart_data = json.load(f)
+            accounts = chart_data.get('accounts', [])
+            
+        # Track which accounts were updated
+        updated_accounts = set()
+        
+        # Reverse each account's balance based on transaction entries
+        for entry in transaction.entries:
+            account_index = None
+            for i, acc in enumerate(accounts):
+                if acc['id'] == entry.accountId:
+                    account_index = i
+                    break
+                    
+            if account_index is None:
+                return False, f"Account {entry.accountId} not found"
+                
+            account = accounts[account_index]
+            
+            # Validate if account is active
+            if not account.get('active', True):
+                return False, f"Account {entry.accountId} is inactive"
+                
+            # Get normal balance type
+            normal_balance = account.get('normalBalanceType', 'debit')
+            
+            # Calculate balance change (reverse of original)
+            if normal_balance == 'debit':
+                # For debit-normal accounts:
+                # Debit increases the balance, Credit decreases it
+                if entry.type == 'debit':
+                    account['currentBalance'] = account.get('currentBalance', 0) - entry.amount
+                else:  # credit
+                    account['currentBalance'] = account.get('currentBalance', 0) + entry.amount
+            else:  # credit normal
+                # For credit-normal accounts:
+                # Credit increases the balance, Debit decreases it
+                if entry.type == 'credit':
+                    account['currentBalance'] = account.get('currentBalance', 0) - entry.amount
+                else:  # debit
+                    account['currentBalance'] = account.get('currentBalance', 0) + entry.amount
+                
+            # Mark account as updated
+            updated_accounts.add(account['id'])
+            
+        # Save changes
+        with open(CHART_OF_ACCOUNTS_FILE, 'w') as f:
+            json.dump(chart_data, f, indent=2)
+            
+        return True, None
+        
+    except Exception as e:
+        return False, str(e)
 
 @transactions_bp.route('/validate', methods=['POST'])
 def validate_transaction():
@@ -361,45 +519,87 @@ def list_transactions():
     try:
         # Get query parameters
         page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 20))
+        per_page = int(request.args.get('per_page', 10))
+        transaction_type = request.args.get('type')
+        sub_type = request.args.get('sub_type')
+        status = request.args.get('status')
+        reference_type = request.args.get('reference_type')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        status = request.args.get('status')
-        account_id = request.args.get('account_id')
-
+        
         # Load transactions
-        data = load_transactions()
-        transactions = data.get('transactions', [])
-
+        transactions_data = load_transactions()
+        transactions = transactions_data.get('transactions', [])
+        
+        # Load invoices to get payment information
+        try:
+            with open(os.path.join(DATA_DIR, 'invoices.json'), 'r') as f:
+                invoices_data = json.load(f)
+                invoices = {inv['id']: inv for inv in invoices_data.get('invoices', [])}
+        except:
+            invoices = {}
+        
         # Apply filters
-        filtered_transactions = transactions
-        if start_date and start_date != '<date>':
-            filtered_transactions = [t for t in filtered_transactions if t['date'] >= start_date]
-        if end_date and end_date != '<date>':
-            filtered_transactions = [t for t in filtered_transactions if t['date'] <= end_date]
-        if status and status != '<string>':
-            filtered_transactions = [t for t in filtered_transactions if t['status'] == status]
-        if account_id and account_id != '<string>':
-            filtered_transactions = [t for t in filtered_transactions 
-                                  if any(e['accountId'] == account_id for e in t['entries'])]
-
+        if transaction_type:
+            transactions = [t for t in transactions if t.get('transaction_type') == transaction_type]
+        if sub_type:
+            transactions = [t for t in transactions if t.get('sub_type') == sub_type]
+        if status:
+            transactions = [t for t in transactions if t.get('status') == status]
+        if reference_type:
+            transactions = [t for t in transactions if t.get('reference_type') == reference_type]
+        if start_date:
+            transactions = [t for t in transactions if t.get('date', '') >= start_date]
+        if end_date:
+            transactions = [t for t in transactions if t.get('date', '') <= end_date]
+            
+        # Add payment information for invoice transactions
+        for transaction in transactions:
+            if transaction.get('reference_type') == 'invoice':
+                invoice_id = transaction.get('reference_id')
+                if invoice_id and invoice_id in invoices:
+                    invoice = invoices[invoice_id]
+                    transaction['invoice_status'] = invoice.get('status', 'unknown')
+                    transaction['invoice_total'] = invoice.get('total_amount', 0)
+                    transaction['invoice_balance'] = invoice.get('balance_due', 0)
+                    transaction['invoice_paid'] = float(invoice.get('total_amount', 0)) - float(invoice.get('balance_due', 0))
+                    transaction['last_payment_date'] = invoice.get('last_payment_date')
+            elif transaction.get('reference_type') == 'invoice_payment':
+                # For payment transactions, extract the invoice ID from reference_id (format: "invoice_id_payment_id")
+                if transaction.get('reference_id'):
+                    invoice_id = transaction.get('reference_id').split('_')[0]
+                    if invoice_id in invoices:
+                        invoice = invoices[invoice_id]
+                        transaction['invoice_status'] = invoice.get('status', 'unknown')
+                        transaction['invoice_total'] = invoice.get('total_amount', 0)
+                        transaction['invoice_balance'] = invoice.get('balance_due', 0)
+                        transaction['invoice_paid'] = float(invoice.get('total_amount', 0)) - float(invoice.get('balance_due', 0))
+                        transaction['last_payment_date'] = invoice.get('last_payment_date')
+        
+        # Sort transactions by date (newest first)
+        transactions.sort(key=lambda x: x.get('date', ''), reverse=True)
+        
         # Calculate pagination
-        total = len(filtered_transactions)
-        total_pages = (total + per_page - 1) // per_page
+        total_items = len(transactions)
+        total_pages = (total_items + per_page - 1) // per_page
         start_idx = (page - 1) * per_page
         end_idx = start_idx + per_page
-        paginated_transactions = filtered_transactions[start_idx:end_idx]
-
+        
+        # Get paginated transactions
+        paginated_transactions = transactions[start_idx:end_idx]
+        
         return jsonify({
             'transactions': paginated_transactions,
             'pagination': {
-                'total': total,
-                'page': page,
+                'total_items': total_items,
+                'total_pages': total_pages,
+                'current_page': page,
                 'per_page': per_page,
-                'total_pages': total_pages
+                'has_next': page < total_pages,
+                'has_prev': page > 1
             }
-        })
-
+        }), 200
+        
     except Exception as e:
         return jsonify({'message': f'Error listing transactions: {str(e)}'}), 500
 
@@ -519,72 +719,118 @@ def post_transaction(transaction_id):
         if transaction_index is None:
             return jsonify({'message': 'Transaction not found'}), 404
             
-        # Validate transaction
+        # Get transaction object
         transaction = Transaction.from_dict(transactions[transaction_index])
+        
+        # Check if transaction is already posted
+        if transaction.status == 'posted':
+            return jsonify({'message': 'Transaction is already posted'}), 400
+            
+        # Validate transaction
         is_valid, error = transaction.validate()
         if not is_valid:
             return jsonify({'message': error}), 400
             
-        # Update status
+        # Update account balances
+        success, error = update_account_balances(transaction)
+        if not success:
+            return jsonify({'message': f'Failed to update account balances: {error}'}), 500
+            
+        # Update transaction status
         now = datetime.utcnow().date().isoformat()
         transaction.status = 'posted'
         transaction.posted_at = now
         transaction.updated_at = now
         
-        # Save changes
+        # Save changes to transaction
         transactions[transaction_index] = transaction.to_dict()
         if not save_transactions(data):
-            return jsonify({'message': 'Failed to save changes'}), 500
+            return jsonify({'message': 'Failed to save transaction changes'}), 500
             
         return jsonify(transaction.to_dict())
         
     except Exception as e:
         return jsonify({'message': f'Error posting transaction: {str(e)}'}), 500
 
-@transactions_bp.route('/void/<transaction_id>', methods=['POST', 'OPTIONS'])
+@transactions_bp.route('/void/<string:transaction_id>', methods=['POST'])
 def void_transaction(transaction_id):
     """Void a transaction"""
-    # Handle OPTIONS request for CORS
-    if request.method == 'OPTIONS':
-        response = jsonify({'message': 'OK'})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST')
-        return response
-
     try:
         # Load transactions
-        data = load_transactions()
-        transactions = data.get('transactions', [])
+        transactions_data = load_transactions()
+        transactions = transactions_data.get('transactions', [])
         
-        # Get void reason
-        void_data = request.get_json()
-        if not void_data or 'reason' not in void_data:
-            return jsonify({'message': 'Void reason is required'}), 400
-            
         # Find transaction
         transaction_index = None
-        for i, t in enumerate(transactions):
-            if t['id'] == transaction_id:
+        for i, txn in enumerate(transactions):
+            if txn['id'] == transaction_id:
                 transaction_index = i
                 break
-        
+                
         if transaction_index is None:
             return jsonify({'message': 'Transaction not found'}), 404
             
-        # Update status
-        now = datetime.utcnow().date().isoformat()
-        transaction = Transaction.from_dict(transactions[transaction_index])
-        transaction.status = 'void'
-        transaction.voided_at = now
-        transaction.updated_at = now
+        transaction = transactions[transaction_index]
+        
+        # Check if transaction can be voided
+        if transaction['status'] != 'posted':
+            return jsonify({'message': 'Only posted transactions can be voided'}), 400
+            
+        if transaction.get('voided_at'):
+            return jsonify({'message': 'Transaction is already voided'}), 400
+            
+        # Create Transaction object to reverse balances
+        transaction_obj = Transaction.from_dict(transaction)
+        success, error = reverse_account_balances(transaction_obj)
+        if not success:
+            return jsonify({'message': f'Failed to reverse account balances: {error}'}), 500
+            
+        # Update transaction status
+        transaction['status'] = 'void'
+        transaction['voided_at'] = datetime.utcnow().isoformat()
+        transaction['voided_by'] = None  # TODO: Add user info
         
         # Save changes
-        transactions[transaction_index] = transaction.to_dict()
-        if not save_transactions(data):
-            return jsonify({'message': 'Failed to save changes'}), 500
+        transactions_data['transactions'] = transactions
+        if not save_transactions(transactions_data):
+            return jsonify({'message': 'Failed to save voided transaction'}), 500
             
-        return jsonify(transaction.to_dict())
+        # If this is an invoice payment, update the invoice status
+        if transaction['reference_type'] == 'invoice_payment':
+            invoice_id = transaction['reference_id'].split('_')[0]  # Get invoice ID from reference
+            
+            # Load invoices
+            with open(os.path.join(DATA_DIR, 'invoices.json'), 'r') as f:
+                invoices_data = json.load(f)
+                
+            # Find invoice
+            invoice = next((inv for inv in invoices_data['invoices'] if inv['id'] == invoice_id), None)
+            if invoice:
+                # Recalculate total paid
+                total_paid = sum(
+                    float(p.get('amount', 0)) 
+                    for p in invoice.get('payments', [])
+                    if p.get('transaction_id') != transaction_id  # Exclude voided payment
+                )
+                
+                # Update balance and status
+                invoice['balance_due'] = float(invoice['total_amount']) - total_paid
+                
+                if total_paid == 0:
+                    invoice['status'] = 'posted'
+                elif total_paid < float(invoice['total_amount']):
+                    invoice['status'] = 'partially_paid'
+                else:
+                    invoice['status'] = 'paid'
+                    
+                # Save changes
+                with open(os.path.join(DATA_DIR, 'invoices.json'), 'w') as f:
+                    json.dump(invoices_data, f, indent=2)
+            
+        return jsonify({
+            'message': 'Transaction voided successfully',
+            'transaction': transaction
+        }), 200
         
     except Exception as e:
         return jsonify({'message': f'Error voiding transaction: {str(e)}'}), 500

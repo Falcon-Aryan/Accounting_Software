@@ -99,30 +99,28 @@ class Transaction:
     date: str
     entries: List[TransactionEntry]
     status: str  # 'draft', 'posted', or 'void'
-    description: Optional[str] = None
-    transaction_type: TransactionType = TransactionType.OTHER
-    sub_type: TransactionSubType = TransactionSubType.OTHER
-    metadata: Dict[str, Any] = None  # Additional context for the transaction
-    reference_type: Optional[str] = None  # e.g., 'invoice_payment', 'bill_payment'
-    reference_id: Optional[str] = None  # ID of the referenced document
-    customer_name: Optional[str] = None  # Added customer name
-    products: Optional[List[Dict[str, Any]]] = None  # Added products list
-    created_at: Optional[str] = None  # Changed from datetime to str
-    updated_at: Optional[str] = None
-    posted_at: Optional[str] = None
-    voided_at: Optional[str] = None
+    description: str
+    transaction_type: str
+    sub_type: str
+    reference_type: Optional[str] = None
+    reference_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    amount: Optional[float] = None
+    created_at: Optional[str] = None
     created_by: Optional[str] = None
+    updated_at: Optional[str] = None
     updated_by: Optional[str] = None
+    posted_at: Optional[str] = None
     posted_by: Optional[str] = None
+    voided_at: Optional[str] = None
     voided_by: Optional[str] = None
-
-    def __post_init__(self):
-        """Set timestamps if not provided"""
-        now = datetime.utcnow().isoformat()
-        if not self.created_at:
-            self.created_at = now
-        if not self.updated_at:
-            self.updated_at = now
+    metadata: Optional[Dict] = None
+    products: Optional[List[Dict]] = None
+    invoice_total: Optional[float] = None
+    invoice_paid: Optional[float] = None
+    invoice_balance: Optional[float] = None
+    invoice_status: Optional[str] = None
+    last_payment_date: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Transaction':
@@ -130,42 +128,34 @@ class Transaction:
         # Convert entries to TransactionEntry objects
         entries = [TransactionEntry.from_dict(entry) for entry in data.get('entries', [])]
         
-        # Convert transaction_type string to enum
-        transaction_type = data.get('transaction_type', 'other')
-        try:
-            transaction_type = TransactionType(transaction_type)
-        except ValueError:
-            transaction_type = TransactionType.OTHER
-
-        # Convert sub_type string to enum
-        sub_type = data.get('sub_type', 'other')
-        try:
-            sub_type = TransactionSubType(sub_type)
-        except ValueError:
-            sub_type = TransactionSubType.OTHER
-
-        # Create the transaction
+        # Create the Transaction object
         return cls(
             id=data.get('id', ''),
             date=data.get('date', ''),
-            entries=entries,
-            status=data.get('status', 'draft'),
-            description=data.get('description'),
-            transaction_type=transaction_type,
-            sub_type=sub_type,
-            metadata=data.get('metadata', {}),
+            description=data.get('description', ''),
+            transaction_type=data.get('transaction_type', ''),
+            sub_type=data.get('sub_type', ''),
             reference_type=data.get('reference_type'),
             reference_id=data.get('reference_id'),
             customer_name=data.get('customer_name'),
-            products=data.get('products'),
+            amount=float(data.get('amount', 0)) if data.get('amount') is not None else None,
+            status=data.get('status', 'draft'),
+            entries=entries,
             created_at=data.get('created_at'),
-            updated_at=data.get('updated_at'),
-            posted_at=data.get('posted_at'),
-            voided_at=data.get('voided_at'),
             created_by=data.get('created_by'),
+            updated_at=data.get('updated_at'),
             updated_by=data.get('updated_by'),
+            posted_at=data.get('posted_at'),
             posted_by=data.get('posted_by'),
-            voided_by=data.get('voided_by')
+            voided_at=data.get('voided_at'),
+            voided_by=data.get('voided_by'),
+            metadata=data.get('metadata'),
+            products=data.get('products'),
+            invoice_total=float(data.get('invoice_total', 0)) if data.get('invoice_total') is not None else None,
+            invoice_paid=float(data.get('invoice_paid', 0)) if data.get('invoice_paid') is not None else None,
+            invoice_balance=float(data.get('invoice_balance', 0)) if data.get('invoice_balance') is not None else None,
+            invoice_status=data.get('invoice_status'),
+            last_payment_date=data.get('last_payment_date')
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -173,37 +163,88 @@ class Transaction:
         return {
             'id': self.id,
             'date': self.date,
-            'entries': [entry.to_dict() for entry in self.entries],
-            'status': self.status,
             'description': self.description,
-            'transaction_type': self.transaction_type.value,
-            'sub_type': self.sub_type.value,
-            'metadata': self.metadata,
+            'transaction_type': self.transaction_type,
+            'sub_type': self.sub_type,
             'reference_type': self.reference_type,
             'reference_id': self.reference_id,
             'customer_name': self.customer_name,
-            'products': self.products,
+            'amount': self.amount,
+            'status': self.status,
+            'entries': [entry.to_dict() for entry in self.entries],
             'created_at': self.created_at,
-            'updated_at': self.updated_at,
-            'posted_at': self.posted_at,
-            'voided_at': self.voided_at,
             'created_by': self.created_by,
+            'updated_at': self.updated_at,
             'updated_by': self.updated_by,
+            'posted_at': self.posted_at,
             'posted_by': self.posted_by,
-            'voided_by': self.voided_by
+            'voided_at': self.voided_at,
+            'voided_by': self.voided_by,
+            'metadata': self.metadata,
+            'products': self.products,
+            'invoice_total': self.invoice_total,
+            'invoice_paid': self.invoice_paid,
+            'invoice_balance': self.invoice_balance,
+            'invoice_status': self.invoice_status,
+            'last_payment_date': self.last_payment_date
         }
+
+    def __post_init__(self):
+        """Set timestamps if not provided"""
+        now = datetime.utcnow().date().isoformat()
+        if not self.created_at:
+            self.created_at = now
+        if not self.updated_at:
+            self.updated_at = now
+            
+        # Convert entries to TransactionEntry objects if they're dictionaries
+        if self.entries and isinstance(self.entries[0], dict):
+            self.entries = [TransactionEntry.from_dict(entry) for entry in self.entries]
 
     def validate(self) -> tuple[bool, Optional[str]]:
         """Validate the transaction"""
-        if not self.entries or len(self.entries) < 2:
-            return False, "Transaction must have at least 2 entries"
-
-        # Calculate total debits and credits
-        total_debits = sum(entry.amount for entry in self.entries if entry.type == 'debit')
-        total_credits = sum(entry.amount for entry in self.entries if entry.type == 'credit')
-
-        # Check if transaction is balanced
-        if abs(total_debits - total_credits) > 0.01:  # Using 0.01 to handle floating point precision
-            return False, "Transaction is not balanced. Debits must equal credits."
-
-        return True, None
+        try:
+            # Basic validation
+            if not self.id:
+                return False, "Transaction ID is required"
+            if not self.date:
+                return False, "Transaction date is required"
+            if not self.entries:
+                return False, "Transaction must have at least one entry"
+                
+            # Validate entries
+            total_debits = 0
+            total_credits = 0
+            account_entries = {}  # Track account entries by type
+            
+            for entry in self.entries:
+                # Validate entry fields
+                if not entry.accountId:
+                    return False, "Account ID is required for all entries"
+                if not entry.accountName:
+                    return False, "Account name is required for all entries"
+                if entry.amount <= 0:
+                    return False, "Amount must be positive for all entries"
+                if entry.type not in ['debit', 'credit']:
+                    return False, "Entry type must be either 'debit' or 'credit'"
+                    
+                # Track totals
+                if entry.type == 'debit':
+                    total_debits += entry.amount
+                else:
+                    total_credits += entry.amount
+                    
+                # Check for duplicate account entries of the same type
+                entry_key = f"{entry.accountId}_{entry.type}"
+                if entry_key in account_entries:
+                    return False, f"Duplicate {entry.type} entry for account {entry.accountId}"
+                account_entries[entry_key] = entry
+                
+            # Validate debits equal credits
+            if abs(total_debits - total_credits) > 0.01:  # Allow for small floating point differences
+                return False, "Total debits must equal total credits"
+                
+            return True, None
+            
+        except Exception as e:
+            return False, str(e)

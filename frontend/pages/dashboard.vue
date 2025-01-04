@@ -8,6 +8,27 @@
             <h1 class="text-xl font-semibold">Dashboard</h1>
           </div>
           <div class="flex items-center space-x-4">
+            <button
+              @click="handleLogout"
+              class="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
+              title="Logout"
+            >
+              <span class="mr-2">Logout</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-6 w-6 inline-block"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
+            </button>
             <NuxtLink 
               to="/settings"
               class="p-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
@@ -42,11 +63,11 @@
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div class="bg-white shadow rounded-lg p-6">
-        <h2 class="text-lg font-medium mb-4">Welcome to your Dashboard</h2>
+        <h2 class="text-lg font-medium mb-4">Welcome {{ user?.email }}</h2>
         
         <!-- Quick Actions -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
+          <!-- Add your dashboard content here -->
         </div>
 
         <!-- Recent Activity -->
@@ -66,39 +87,56 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRuntimeConfig, navigateTo } from '#app'
+import { useRuntimeConfig, navigateTo } from 'nuxt/app'
+import { useFirebaseAuth } from '../composables/useFirebaseAuth'
+
+interface Activity {
+  id: string
+  description: string
+}
+
+const { user, logout } = useFirebaseAuth()
 
 const config = useRuntimeConfig()
-const recentActivity = ref([])
+const recentActivity = ref<Activity[]>([])
 const estimatesSummary = ref({})
 const invoicesSummary = ref({})
 const customersSummary = ref({})
 
-onMounted(async () => {
-  try {
+// Redirect to login if not authenticated
+onMounted(() => {
+  if (!user.value) {
+    navigateTo('/')
+  } else {
     // Fetch recent activity data
-    const activityResponse = await fetch(`${config.public.apiBase}/api/activity/recent`)
-    const activityData = await activityResponse.json()
-    recentActivity.value = activityData
+    fetch(`${config.public.apiBase}/api/activity/recent`)
+      .then(response => response.json())
+      .then(data => recentActivity.value = data)
+      .catch(error => console.error('Error fetching recent activity:', error))
 
     // Fetch estimates summary
-    const estimatesResponse = await fetch(`${config.public.apiBase}/estimates/summary`)
-    const estimatesData = await estimatesResponse.json()
-    estimatesSummary.value = estimatesData
+    fetch(`${config.public.apiBase}/estimates/summary`)
+      .then(response => response.json())
+      .then(data => estimatesSummary.value = data)
+      .catch(error => console.error('Error fetching estimates summary:', error))
 
     // Fetch invoices summary
-    const invoicesResponse = await fetch(`${config.public.apiBase}/invoices/summary`)
-    const invoicesData = await invoicesResponse.json()
-    invoicesSummary.value = invoicesData
+    fetch(`${config.public.apiBase}/invoices/summary`)
+      .then(response => response.json())
+      .then(data => invoicesSummary.value = data)
+      .catch(error => console.error('Error fetching invoices summary:', error))
 
     // Fetch customers summary
-    const customersResponse = await fetch(`${config.public.apiBase}/api/customers/summary`)
-    const customersData = await customersResponse.json()
-    customersSummary.value = customersData
-  } catch (error) {
-    console.error('Error fetching data:', error)
+    fetch(`${config.public.apiBase}/api/customers/summary`)
+      .then(response => response.json())
+      .then(data => customersSummary.value = data)
+      .catch(error => console.error('Error fetching customers summary:', error))
   }
 })
+
+const handleLogout = async () => {
+  await logout()
+}
 </script>

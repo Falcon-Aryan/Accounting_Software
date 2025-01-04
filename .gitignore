@@ -42,3 +42,5 @@ yarn-error.log*
 backend/data/*.json
 !backend/data/chart_of_accounts.json
 !backend/data/default_accounts.json
+# Firebase service account key
+backend/config/serviceAccountKey.json

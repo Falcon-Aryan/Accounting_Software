@@ -22,9 +22,10 @@ def create_user():
 
 @users_bp.route('/sync', methods=['POST'])
 def sync_users():
+    """Sync users from Firebase to local storage"""
     try:
         users = UserModel.sync_all_firebase_users()
-        return jsonify(users), 200
+        return jsonify(users)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -54,6 +55,24 @@ def get_user(uid):
         return jsonify(user), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@users_bp.route('/<uid>/profile', methods=['GET', 'PUT'])
+def user_profile(uid):
+    """Get or update user profile"""
+    try:
+        if request.method == 'GET':
+            users_data = UserModel._read_users_file()
+            if uid not in users_data['users']:
+                return jsonify({'error': 'User not found'}), 404
+            return jsonify(users_data['users'][uid])
+            
+        elif request.method == 'PUT':
+            data = request.get_json()
+            updated_user = UserModel.update_user_profile(uid, data)
+            return jsonify(updated_user)
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 @users_bp.route('/update/<uid>', methods=['PUT'])
 def update_user(uid):

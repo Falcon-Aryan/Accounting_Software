@@ -60,7 +60,12 @@
         <td class="px-6 py-4 whitespace-nowrap">
           <div>
             <div class="text-sm font-medium text-gray-900">
-              {{ customer.first_name }} {{ customer.last_name }}
+              <NuxtLink 
+                :to="`/reports/customer/${customer.id}`"
+                class="text-green-600 hover:text-green-500"
+              >
+                {{ customer.first_name }} {{ customer.last_name }}
+              </NuxtLink>
             </div>
             <div class="text-sm text-gray-500">{{ customer.customer_no }}</div>
           </div>

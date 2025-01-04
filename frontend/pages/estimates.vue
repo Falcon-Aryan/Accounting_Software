@@ -75,7 +75,12 @@
     <template #table-body>
       <tr v-for="estimate in filteredEstimates" :key="estimate.id" class="even:bg-gray-50">
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-          {{ estimate.estimate_no }}
+          <NuxtLink 
+            :to="`/reports/estimate/${estimate.id}`"
+            class="text-green-600 hover:text-green-500"
+          >
+            {{ estimate.estimate_no }}
+          </NuxtLink>
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-black-500">
           {{ estimate.customer_name }}

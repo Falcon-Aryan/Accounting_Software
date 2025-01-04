@@ -77,7 +77,12 @@
     <template #table-body>
       <tr v-for="invoice in filteredInvoices" :key="invoice.id" class="even:bg-gray-50">
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-          {{ invoice.invoice_no }}
+          <NuxtLink 
+            :to="`/reports/invoice/${invoice.id}`"
+            class="text-green-600 hover:text-green-500"
+          >
+            {{ invoice.invoice_no }}
+          </NuxtLink>
           <div v-if="invoice.status === 'void'" class="text-xs text-red-600 mt-1">
             {{ invoice.void_reason || 'No reason provided' }}
           </div>

@@ -208,11 +208,10 @@ class Account:
     detailType: str
     description: Optional[str] = None
     openingBalance: float = 0.0
-    currentBalance: float = 0.0  # New: Tracks real-time balance
-    quickbooksBalance: float = 0.0
-    normalBalanceType: str = None  # New: 'debit' or 'credit'
-    parentAccountId: Optional[str] = None  # New: For account hierarchy
-    lastTransactionDate: Optional[datetime] = None  # New: Last transaction date
+    currentBalance: float = 0.0
+    normalBalanceType: str = None
+    parentAccountId: Optional[str] = None
+    lastTransactionDate: Optional[datetime] = None
     active: bool = True
     isDefault: bool = False
 
@@ -239,7 +238,6 @@ class Account:
             description=data.get('description'),
             openingBalance=float(data.get('openingBalance', 0.0)),
             currentBalance=float(data.get('currentBalance', data.get('openingBalance', 0.0))),
-            quickbooksBalance=float(data.get('quickbooksBalance', 0.0)),
             normalBalanceType=data.get('normalBalanceType'),
             parentAccountId=data.get('parentAccountId'),
             lastTransactionDate=last_transaction,
@@ -257,7 +255,6 @@ class Account:
             'description': self.description,
             'openingBalance': self.openingBalance,
             'currentBalance': self.currentBalance,
-            'quickbooksBalance': self.quickbooksBalance,
             'normalBalanceType': self.normalBalanceType,
             'parentAccountId': self.parentAccountId,
             'lastTransactionDate': self.lastTransactionDate.isoformat() if self.lastTransactionDate else None,

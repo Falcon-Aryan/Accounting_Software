@@ -74,7 +74,14 @@
       <tr v-for="item in filteredItems" :key="item.id" class="even:bg-gray-50">
         <td class="px-4 py-4 whitespace-nowrap">
           <div>
-            <div class="text-sm font-medium text-gray-900">{{ item.name }}</div>
+            <div class="text-sm font-medium text-gray-900">
+              <NuxtLink 
+                :to="`/reports/product/${item.id}`"
+                class="text-green-600 hover:text-green-500"
+              >
+                {{ item.name }}
+              </NuxtLink>
+            </div>
             <div class="text-sm text-gray-500">{{ item.description || 'No description' }}</div>
           </div>
         </td>

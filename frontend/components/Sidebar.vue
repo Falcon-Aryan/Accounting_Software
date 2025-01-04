@@ -54,10 +54,22 @@
         </li>
 
         <!-- Expenses -->
-        <li>
-          <NuxtLink to="/expenses" class="flex items-center px-6 py-2 text-gray-700 hover:bg-gray-100">
+        <li class="relative group">
+          <div class="flex items-center justify-between px-6 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">
             <span>Expenses</span>
-          </NuxtLink>
+            <span class="transform group-hover:rotate-90 transition-transform">›</span>
+          </div>
+          <ul class="hidden group-hover:block absolute left-full top-0 w-48 bg-white border border-gray-200 shadow-lg">
+            <li>
+              <NuxtLink to="/expenses" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Expenses</NuxtLink>
+            </li>
+            <li>
+              <NuxtLink to="/expenses/bills" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Bills</NuxtLink>
+            </li>
+            <li>
+              <NuxtLink to="/expenses/vendors" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Vendors</NuxtLink>
+            </li>
+          </ul>
         </li>
 
         <!-- Reports -->

@@ -1,6 +1,7 @@
 from flask import jsonify, request
 import json
 import os
+import sys
 from typing import Dict, List, Optional
 import random
 from datetime import datetime
@@ -16,6 +17,12 @@ ACCOUNTS_FILE = os.path.join(DATA_DIR, 'chart_of_accounts.json')
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# Add scripts directory to path for importing
+SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'scripts')
+sys.path.append(SCRIPTS_DIR)
+
+from initialize_accounts import initialize_accounts
+
 def deep_update(original: Dict, update: Dict) -> None:
     """Recursively update nested dictionaries"""
     for key, value in update.items():
@@ -29,7 +36,16 @@ def load_accounts() -> Dict:
     try:
         if os.path.exists(ACCOUNTS_FILE):
             with open(ACCOUNTS_FILE, 'r') as f:
-                return json.load(f)
+                accounts_data = json.load(f)
+                
+                # Check if accounts list is empty
+                if len(accounts_data.get('accounts', [])) == 0:
+                    # Initialize with default accounts
+                    if initialize_accounts():
+                        with open(ACCOUNTS_FILE, 'r') as f:
+                            accounts_data = json.load(f)
+                    
+                return accounts_data
     except Exception as e:
         print(f"Error loading accounts data: {str(e)}")
     return {'accounts': [], 'summary': {}}

@@ -1,36 +1,37 @@
 {
   "estimates": [
     {
-      "id": "5177-5535",
+      "id": "5939-1389",
       "estimate_no": "EST-2024-001",
-      "estimate_date": "2025-01-01",
+      "estimate_date": "2025-01-03",
       "customer_name": "Aryan Khanna",
       "status": "converted",
       "products": [
         {
-          "name": "test service",
-          "description": "service test ",
-          "price": 100.0,
-          "quantity": 2,
+          "name": "Service Test",
+          "description": "$ 150/hr",
+          "price": 150.0,
+          "quantity": 3,
           "type": "service",
           "sell_enabled": true,
-          "purchase_enabled": false,
+          "purchase_enabled": true,
           "income_account_id": "4000-0001",
-          "expense_account_id": ""
+          "expense_account_id": "6000-0001",
+          "cost_price": 0.0
         }
       ],
-      "total_amount": 200.0,
-      "created_at": "2025-01-01",
-      "updated_at": "2025-01-01",
+      "total_amount": 450.0,
+      "created_at": "2025-01-03",
+      "updated_at": "2025-01-03",
       "conversion_info": {
-        "invoice_id": "1445-7968",
+        "invoice_id": "5610-9945",
         "invoice_no": "INV-2024-001",
-        "conversion_date": "2025-01-01"
+        "conversion_date": "2025-01-03"
       }
     }
   ],
   "summary": {
     "total_count": 1,
-    "total_amount": 200.0
+    "total_amount": 450.0
   }
 }

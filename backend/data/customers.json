@@ -1,11 +1,11 @@
 {
   "customers": [
     {
-      "id": "9442-6863",
+      "id": "1195-4341",
       "customer_no": "CUST-2025-001",
       "first_name": "Aryan",
       "last_name": "Khanna",
-      "company_name": null,
+      "company_name": "Falcon Water Tech LLC",
       "email": "falconaryan171@gmail.com",
       "phone": "4808867031",
       "website": "",
@@ -18,8 +18,8 @@
       },
       "shipping_address": null,
       "use_billing_for_shipping": true,
-      "created_at": "2025-01-01",
-      "updated_at": "2025-01-01"
+      "created_at": "2025-01-03",
+      "updated_at": "2025-01-03"
     }
   ]
 }

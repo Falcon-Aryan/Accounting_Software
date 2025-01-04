@@ -80,8 +80,16 @@
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
           {{ account.id }}
         </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-          {{ account.name }}
+        <td class="px-6 py-4 whitespace-nowrap">
+          <div class="text-sm text-gray-900">
+            <NuxtLink 
+              :to="`/reports/account/${account.id}`"
+              class="text-green-600 hover:text-green-500"
+            >
+              {{ account.name }}
+            </NuxtLink>
+          </div>
+          <div class="text-sm text-gray-500">{{ account.description }}</div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
           {{ account.accountType }}

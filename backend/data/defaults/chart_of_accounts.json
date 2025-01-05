@@ -1,0 +1,16 @@
+{
+  "accounts": [],
+  "summary": {
+    "totalAccounts": 0,
+    "activeAccounts": 0,
+    "inactiveAccounts": 0,
+    "totalDebit": 0.0,
+    "totalCredit": 0.0,
+    "total_assets": 0.0,
+    "total_liabilities": 0.0,
+    "total_equity": 0.0,
+    "total_income": 0.0,
+    "total_expense": 0.0,
+    "last_updated": null
+  }
+}

@@ -1,30 +1,23 @@
-import { initializeApp, FirebaseApp } from 'firebase/app'
-import { getAuth, Auth } from 'firebase/auth'
+import { initializeApp } from 'firebase/app'
+import { getAuth } from 'firebase/auth'
 import { firebaseConfig } from '../config/firebase.config'
 import { defineNuxtPlugin } from 'nuxt/app'
 
-let app: FirebaseApp | undefined
-let auth: Auth | undefined
-
-export default defineNuxtPlugin(() => {
-  if (!app) {
+export default defineNuxtPlugin((nuxtApp) => {
+  // Initialize Firebase only on client-side
+  if (process.client) {
     try {
-      // Initialize Firebase only on client-side
-      if (process.client) {
-        console.log('Initializing Firebase...')
-        app = initializeApp(firebaseConfig)
-        auth = getAuth(app)
-        console.log('Firebase initialized successfully')
-      }
+      console.log('Initializing Firebase...')
+      const app = initializeApp(firebaseConfig)
+      const auth = getAuth(app)
+      console.log('Firebase initialized successfully')
+
+      // Provide Firebase instances
+      nuxtApp.provide('firebaseApp', app)
+      nuxtApp.provide('firebaseAuth', auth)
     } catch (error) {
       console.error('Error initializing Firebase:', error)
-    }
-  }
-
-  return {
-    provide: {
-      firebaseApp: app,
-      firebaseAuth: auth
+      throw error // Re-throw to show the error in the console
     }
   }
 })

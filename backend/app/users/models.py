@@ -52,102 +52,74 @@ class UserModel:
             
             # Update timestamps in the loaded data
             current_time = datetime.now().isoformat()
-            
-            # Define directory structure with initial JSON content
-            structure = {
-                'invoices': {
-                    'filename': 'invoices.json',
-                    'content': {
-                        **invoices_data,
-                        'metadata': {
-                            **invoices_data.get('metadata', {}),
-                            'lastUpdated': current_time
-                        }
+
+            # Create JSON files directly in the user directory
+            files_to_create = {
+                'invoices.json': {
+                    **invoices_data,
+                    'metadata': {
+                        **invoices_data.get('metadata', {}),
+                        'lastUpdated': current_time
                     }
                 },
-                'customers': {
-                    'filename': 'customers.json',
-                    'content': {
-                        **customers_data,
-                        'metadata': {
-                            **customers_data.get('metadata', {}),
-                            'lastUpdated': current_time
-                        }
+                'customers.json': {
+                    **customers_data,
+                    'metadata': {
+                        **customers_data.get('metadata', {}),
+                        'lastUpdated': current_time
                     }
                 },
-                'products': {
-                    'filename': 'products.json',
-                    'content': {
-                        **products_data,
-                        'metadata': {
-                            **products_data.get('metadata', {}),
-                            'lastUpdated': current_time
-                        }
+                'products.json': {
+                    **products_data,
+                    'metadata': {
+                        **products_data.get('metadata', {}),
+                        'lastUpdated': current_time
                     }
                 },
-                'estimates': {
-                    'filename': 'estimates.json',
-                    'content': {
-                        **estimates_data,
-                        'metadata': {
-                            **estimates_data.get('metadata', {}),
-                            'lastUpdated': current_time
-                        }
+                'estimates.json': {
+                    **estimates_data,
+                    'metadata': {
+                        **estimates_data.get('metadata', {}),
+                        'lastUpdated': current_time
                     }
                 },
-                'company': {
-                    'filename': 'company.json',
-                    'content': {
-                        **company_data,
-                        'metadata': {
-                            **company_data.get('metadata', {}),
-                            'lastUpdated': current_time,
-                            'createdAt': current_time
-                        }
+                'company.json': {
+                    **company_data,
+                    'metadata': {
+                        **company_data.get('metadata', {}),
+                        'lastUpdated': current_time,
+                        'createdAt': current_time
                     }
                 },
-                'advanced': {
-                    'filename': 'advanced.json',
-                    'content': {
-                        **advanced_data,
-                        'metadata': {
-                            **advanced_data.get('metadata', {}),
-                            'lastUpdated': current_time
-                        }
+                'advanced.json': {
+                    **advanced_data,
+                    'metadata': {
+                        **advanced_data.get('metadata', {}),
+                        'lastUpdated': current_time
                     }
                 },
-                'transactions': {
-                    'filename': 'transactions.json',
-                    'content': {
-                        **transactions_data,
-                        'metadata': {
-                            **transactions_data.get('metadata', {}),
-                            'lastUpdated': current_time
-                        }
-                    }
+                'chart_of_accounts.json': {
+                    'accounts': default_accounts['accounts'],
+                    'metadata': {
+                        'lastUpdated': current_time,
+                        'fiscalYear': datetime.now().year
+                    },
+                    'summary': default_accounts['summary']
                 },
-                'chart_of_accounts': {
-                    'filename': 'chart_of_accounts.json',
-                    'content': {
-                        'accounts': default_accounts['accounts'],
-                        'metadata': {
-                            'lastUpdated': current_time,
-                            'fiscalYear': datetime.now().year
-                        },
-                        'summary': default_accounts['summary']
+                'transactions.json': {
+                    **transactions_data,
+                    'metadata': {
+                        **transactions_data.get('metadata', {}),
+                        'lastUpdated': current_time
                     }
                 }
             }
-            
-            # Create each directory and its JSON file
-            for dir_name, config in structure.items():
-                dir_path = os.path.join(user_dir, dir_name)
-                os.makedirs(dir_path, exist_ok=True)
-                
-                # Create JSON file
-                file_path = os.path.join(dir_path, config['filename'])
+
+            # Write all files directly to the user directory
+            for filename, content in files_to_create.items():
+                file_path = os.path.join(user_dir, filename)
                 with open(file_path, 'w') as f:
-                    json.dump(config['content'], f, indent=2)
+                    json.dump(content, f, indent=2)
 
     @staticmethod
     def create_user(email: str, password: str) -> Dict:

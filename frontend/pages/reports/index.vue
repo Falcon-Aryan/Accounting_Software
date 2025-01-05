@@ -165,6 +165,10 @@
 <script setup>
 import { ref, computed } from 'vue'
 
+definePageMeta({
+  middleware: ['auth']
+})
+
 // State
 const searchQuery = ref('')
 const expandedSections = ref({

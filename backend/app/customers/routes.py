@@ -4,6 +4,19 @@ from app.customers.models import Customer, Address
 import uuid
 from datetime import datetime
 from typing import Dict, Optional
+from firebase_admin import auth
+
+def get_user_id():
+    """Get the user ID from the Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split('Bearer ')[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except:
+        return None
 
 def validate_address(data: Dict) -> Optional[Dict]:
     required_fields = ['street', 'city', 'state', 'postal_code', 'country']
@@ -33,20 +46,32 @@ def validate_customer(data: Dict, for_update: bool = False) -> Optional[Dict]:
 
 @customers_bp.route('/list_customers', methods=['GET'])
 def get_customers():
-    customers = Customer.get_all()
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    customers = Customer.get_all(uid)
     if not customers:
         return jsonify({"message": "No customers found", "customers": []})
     return jsonify({"message": f"Found {len(customers)} customers", "customers": [customer.to_dict() for customer in customers]})
 
 @customers_bp.route('/get_customer/<customer_id>', methods=['GET'])
 def get_customer(customer_id):
-    customer = Customer.get_by_id(customer_id)
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    customer = Customer.get_by_id(uid, customer_id)
     if not customer:
         return jsonify({'error': 'Customer not found'}), 404
     return jsonify({"message": "Customer found", "customer": customer.to_dict()})
 
 @customers_bp.route('/create_customer', methods=['POST'])
 def create_customer():
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     data = request.get_json()
     
     # Validate request data
@@ -55,7 +80,7 @@ def create_customer():
         return jsonify(error), 400
 
     # Check if customer already exists
-    if Customer.exists(data['first_name'], data['last_name']):
+    if Customer.exists(uid, data['first_name'], data['last_name']):
         return jsonify({'error': 'A customer with this name already exists'}), 400
 
     # Create Address objects
@@ -67,7 +92,7 @@ def create_customer():
     # Create new customer with 8-character ID
     customer = Customer(
         id=Customer.generate_customer_id(),
-        customer_no=Customer.get_next_number(),
+        customer_no=Customer.get_next_number(uid),
         first_name=data['first_name'],
         last_name=data['last_name'],
         company_name=data.get('company_name'),
@@ -84,12 +109,16 @@ def create_customer():
     customer.created_at = now
     customer.updated_at = now
 
-    customer.save()
+    customer.save(uid)
     return jsonify({"message": "Customer created successfully", "customer": customer.to_dict()}), 201
 
 @customers_bp.route('/update_customer/<customer_id>', methods=['PUT'])
 def update_customer(customer_id):
-    customer = Customer.get_by_id(customer_id)
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    customer = Customer.get_by_id(uid, customer_id)
     if not customer:
         return jsonify({'error': 'Customer not found'}), 404
 
@@ -130,22 +159,38 @@ def update_customer(customer_id):
     now = datetime.utcnow().date().isoformat()
     customer.updated_at = now
 
-    customer.save()
+    customer.save(uid)
     return jsonify({"message": "Customer updated successfully", "customer": customer.to_dict()})
 
 @customers_bp.route('/delete_customer/<customer_id>', methods=['DELETE'])
 def delete_customer(customer_id):
-    customer = Customer.get_by_id(customer_id)
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    customer = Customer.get_by_id(uid, customer_id)
     if not customer:
         return jsonify({'error': 'Customer not found'}), 404
-    customer.delete()
+    customer.delete(uid)
     return jsonify({"message": "Customer deleted successfully"}), 200
 
 @customers_bp.route('/next_number', methods=['GET'])
 def get_next_customer_number():
-    return jsonify({"message": "Next customer number retrieved successfully", "next_number": Customer.get_next_number()})
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    return jsonify({"message": "Next customer number retrieved successfully", "next_number": Customer.get_next_number(uid)})
 
 @customers_bp.route('/summary', methods=['GET'])
 def get_customer_summary():
-    customers = Customer.get_all()
-    return jsonify({"message": "Customer summary retrieved successfully", "total": len(customers), "recent": [c.to_dict() for c in sorted(customers, key=lambda x: x.created_at, reverse=True)[:5]]})
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    customers = Customer.get_all(uid)
+    return jsonify({
+        "message": "Customer summary retrieved successfully", 
+        "total": len(customers), 
+        "recent": [c.to_dict() for c in sorted(customers, key=lambda x: x.created_at, reverse=True)[:5]]
+    })

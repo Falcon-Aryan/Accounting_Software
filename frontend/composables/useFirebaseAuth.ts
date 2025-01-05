@@ -1,5 +1,6 @@
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, User, Auth } from 'firebase/auth'
-import { useNuxtApp, useState, navigateTo } from 'nuxt/app'
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import type { Auth, User } from 'firebase/auth'
+import { useNuxtApp, useState, navigateTo, useRuntimeConfig } from 'nuxt/app'
 import { ref } from 'vue'
 
 export const useFirebaseAuth = () => {
@@ -10,7 +11,7 @@ export const useFirebaseAuth = () => {
 
   // Type guard to check if auth is properly initialized
   const isAuthInitialized = (auth: any): auth is Auth => {
-    return auth && typeof auth.createUserWithEmailAndPassword === 'function'
+    return auth && typeof auth.signInWithEmailAndPassword === 'function'
   }
 
   const getErrorMessage = (code: string) => {
@@ -39,31 +40,49 @@ export const useFirebaseAuth = () => {
   }
 
   const signUp = async (email: string, password: string) => {
-    if (!$firebaseAuth || !isAuthInitialized($firebaseAuth)) {
-      console.error('Firebase Auth not initialized')
-      error.value = 'Authentication service not initialized'
-      return
-    }
-
     error.value = ''
     loading.value = true
-    
+
     try {
-      console.log('Attempting to sign up with email:', email)
-      const userCredential = await createUserWithEmailAndPassword($firebaseAuth, email, password)
-      user.value = userCredential.user
-      console.log('Sign up successful')
+      const config = useRuntimeConfig()
+      const response = await fetch(`${config.public.apiBase}/api/users/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.message || 'Failed to create user')
+      }
+
+      const data = await response.json()
+      user.value = data.user
+
+      // Sync user data after successful creation
+      await fetch(`${config.public.apiBase}/api/users/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
       await navigateTo('/dashboard')
     } catch (e: any) {
-      console.error('Sign up error:', e)
-      error.value = getErrorMessage(e.code)
+      error.value = e.message || 'Failed to create account'
+      console.error('Signup error:', e)
     } finally {
       loading.value = false
     }
   }
 
   const signIn = async (email: string, password: string) => {
-    if (!$firebaseAuth || !isAuthInitialized($firebaseAuth)) {
+    if (!$firebaseAuth) {
       console.error('Firebase Auth not initialized')
       error.value = 'Authentication service not initialized'
       return
@@ -71,23 +90,21 @@ export const useFirebaseAuth = () => {
 
     error.value = ''
     loading.value = true
-    
+
     try {
-      console.log('Attempting to sign in with email:', email)
       const userCredential = await signInWithEmailAndPassword($firebaseAuth, email, password)
       user.value = userCredential.user
-      console.log('Sign in successful')
       await navigateTo('/dashboard')
     } catch (e: any) {
-      console.error('Sign in error:', e)
       error.value = getErrorMessage(e.code)
+      console.error('Sign in error:', e)
     } finally {
       loading.value = false
     }
   }
 
   const logout = async () => {
-    if (!$firebaseAuth || !isAuthInitialized($firebaseAuth)) {
+    if (!$firebaseAuth) {
       console.error('Firebase Auth not initialized')
       error.value = 'Authentication service not initialized'
       return
@@ -95,15 +112,14 @@ export const useFirebaseAuth = () => {
 
     error.value = ''
     loading.value = true
-    
+
     try {
       await signOut($firebaseAuth)
       user.value = null
-      console.log('Logout successful')
       await navigateTo('/')
     } catch (e: any) {
-      console.error('Logout error:', e)
       error.value = getErrorMessage(e.code)
+      console.error('Logout error:', e)
     } finally {
       loading.value = false
     }

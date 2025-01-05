@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Dict, Optional, List
 from app.transactions.routes import load_transactions
 from app.chart_of_accounts.routes import load_accounts
+from firebase_admin import auth
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -16,10 +17,29 @@ logger = logging.getLogger(__name__)
 # File path for storing advanced settings data
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-ADVANCED_DATA_FILE = os.path.join(DATA_DIR, 'advanced.json')
+DEFAULTS_DIR = os.path.join(DATA_DIR, 'defaults')
+DEFAULT_ADVANCED_FILE = os.path.join(DEFAULTS_DIR, 'advanced.json')
 
-# Ensure data directory exists
+# Ensure data directories exist
 os.makedirs(DATA_DIR, exist_ok=True)
+
+def get_user_id():
+    """Get the user ID from the Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split('Bearer ')[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except:
+        return None
+
+def get_user_advanced_file(uid: str) -> str:
+    """Get the path to a user's advanced settings file"""
+    user_dir = os.path.join(DATA_DIR, uid)
+    os.makedirs(user_dir, exist_ok=True)
+    return os.path.join(user_dir, 'advanced.json')
 
 # Advanced field enums
 ADVANCED_ENUMS = {
@@ -78,70 +98,205 @@ ADVANCED_ENUMS = {
     ]
 }
 
-def load_advanced_data():
+def load_advanced_data(uid: str = None) -> Dict:
     """Load advanced settings data from JSON file."""
     try:
-        if os.path.exists(ADVANCED_DATA_FILE):
-            with open(ADVANCED_DATA_FILE, 'r') as f:
-                return json.load(f)
-        else:
-            default_data = {
-                "accounting": {
-                    "fiscal_year_start": "",
-                    "income_tax_year_start": "",
-                    "accounting_method": "",
-                    "close_the_books": False
-                },
-                "company_type": {
-                    "tax_form": ""
-                },
-                "chart_of_accounts": {
-                    "enable_account_numbers": False,
-                    "tips_account": ""
-                },
-                "categories": {
-                    "track_classes": False,
-                    "track_locations": False
-                },
-                "automation": {
-                    "pre_fill_forms": False,
-                    "apply_credits_automatically": False,
-                    "invoice_unbilled_activity": False,
-                    "apply_bill_payments_automatically": False
-                },
-                "projects": {
-                    "organize_job_activity": False
-                },
-                "currency": {
-                    "home_currency": "United States Dollar",
-                    "multicurrency": False
-                },
-                "other_preferences": {
-                    "date_format": "",
-                    "currency_format": "",
-                    "customer_label": "",
-                    "duplicate_check_warning": False,
-                    "vendor_bill_warning": False,
-                    "duplicate_journal_warning": False,
-                    "sign_out_after_inactivity": ""
-                }
-            }
-            with open(ADVANCED_DATA_FILE, 'w') as f:
-                json.dump(default_data, f, indent=4)
-            return default_data
-    except Exception as e:
-        print(f"Error loading advanced data: {e}")
-        return None
+        # First try to load user-specific settings if UID is provided
+        if uid:
+            user_file = get_user_advanced_file(uid)
+            if os.path.exists(user_file):
+                with open(user_file, 'r') as f:
+                    return json.load(f)
 
-def save_advanced_data(data):
+        # If no user file exists, load from defaults
+        if os.path.exists(DEFAULT_ADVANCED_FILE):
+            with open(DEFAULT_ADVANCED_FILE, 'r') as f:
+                data = json.load(f)
+                if uid:  # If this is for a user, save it to their file
+                    save_advanced_data(data, uid)
+                return data
+
+        # If no default file exists, create with basic settings
+        default_data = {
+            "accounting": {
+                "fiscal_year_start": "January",
+                "income_tax_year_start": "Same as fiscal year",
+                "accounting_method": "Accrual",
+                "close_the_books": False
+            },
+            "company": {
+                "tax_form": "Sole Proprietor (Form 1040)"
+            },
+            "chart_of_accounts": {
+                "enable_account_numbers": True,
+                "tips_account": "Tips Payable"
+            },
+            "categories": {
+                "track_classes": False,
+                "track_locations": False
+            },
+            "automation": {
+                "pre_fill_forms": True,
+                "apply_credits_automatically": True,
+                "invoice_unbilled_activity": False,
+                "apply_bill_payments_automatically": True
+            },
+            "projects": {
+                "organize_job_activity": False
+            },
+            "currency": {
+                "home_currency": "USD",
+                "multicurrency": False
+            },
+            "other_preferences": {
+                "date_format": "MM/DD/YYYY",
+                "currency_format": "$#,###.##",
+                "customer_label": "Customer",
+                "duplicate_check_warning": True,
+                "vendor_bill_warning": True,
+                "duplicate_journal_warning": True,
+                "sign_out_after_inactivity": "30 minutes"
+            }
+        }
+        
+        # Save default data
+        os.makedirs(os.path.dirname(DEFAULT_ADVANCED_FILE), exist_ok=True)
+        with open(DEFAULT_ADVANCED_FILE, 'w') as f:
+            json.dump(default_data, f, indent=2)
+            
+        if uid:  # If this is for a user, save it to their file
+            save_advanced_data(default_data, uid)
+            
+        return default_data
+        
+    except Exception as e:
+        logger.error(f"Error loading advanced settings: {str(e)}")
+        return {}
+
+def save_advanced_data(data: Dict, uid: str = None) -> None:
     """Save advanced settings data to JSON file"""
     try:
-        with open(ADVANCED_DATA_FILE, 'w') as file:
-            json.dump(data, file, indent=4)
-        return True
+        # If UID is provided, save to user's file
+        if uid:
+            file_path = get_user_advanced_file(uid)
+        else:
+            file_path = DEFAULT_ADVANCED_FILE
+            
+        with open(file_path, 'w') as f:
+            json.dump(data, f, indent=2)
     except Exception as e:
-        print(f"Error saving advanced settings data: {str(e)}")
-        return False
+        logger.error(f"Error saving advanced settings: {str(e)}")
+        raise
+
+@advanced_bp.route('/get_advanced', methods=['GET'])
+def get_advanced():
+    """Retrieve advanced settings or specific attributes"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        # Load settings from user's file
+        settings = load_advanced_data(uid)
+        
+        # Check for specific attributes in query params
+        attributes = request.args.get('attributes')
+        if attributes:
+            requested_data = {}
+            for attr in attributes.split(','):
+                value = get_nested_attribute(settings, attr.strip())
+                if value is not None:
+                    requested_data[attr] = value
+            return jsonify(requested_data)
+            
+        return jsonify(settings)
+    except Exception as e:
+        logger.error(f"Error retrieving advanced settings: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@advanced_bp.route('/create_advanced', methods=['POST'])
+def create_advanced():
+    """Create advanced settings"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        # Save new settings
+        save_advanced_data(data, uid)
+        return jsonify({'message': 'Advanced settings created successfully', 'settings': data})
+    except Exception as e:
+        logger.error(f"Error creating advanced settings: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@advanced_bp.route('/update_advanced', methods=['PUT'])
+def update_advanced():
+    """Update advanced settings with validation and migration handling"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        # Load current settings
+        current_settings = load_advanced_data(uid)
+        
+        # Validate critical changes
+        if 'accounting' in data:
+            error = validate_fiscal_year_change(current_settings, data)
+            if error:
+                return jsonify({'error': error}), 400
+                
+            error = validate_accounting_method_change(current_settings, data)
+            if error:
+                return jsonify({'error': error}), 400
+        
+        # Update settings
+        updated_settings = current_settings.copy()
+        deep_update(updated_settings, data)
+        save_advanced_data(updated_settings, uid)
+        
+        return jsonify({
+            'message': 'Advanced settings updated successfully',
+            'settings': updated_settings
+        })
+    except Exception as e:
+        logger.error(f"Error updating advanced settings: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@advanced_bp.route('/delete_advanced', methods=['DELETE'])
+def delete_advanced():
+    """Reset advanced settings"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        # Load default settings
+        default_settings = load_advanced_data()
+        
+        # Save default settings to user's file
+        save_advanced_data(default_settings, uid)
+        
+        return jsonify({
+            'message': 'Advanced settings reset to defaults successfully',
+            'settings': default_settings
+        })
+    except Exception as e:
+        logger.error(f"Error resetting advanced settings: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@advanced_bp.route('/get_field_options', methods=['GET'])
+def get_field_options():
+    """Get available options for advanced settings fields"""
+    return jsonify(ADVANCED_ENUMS)
 
 def deep_update(original, update):
     """Recursively update nested dictionaries"""
@@ -154,185 +309,40 @@ def deep_update(original, update):
 def get_nested_attribute(data, path):
     """Get nested attribute from dictionary using dot notation"""
     try:
-        for key in path.split('.'):
-            data = data[key]
-        return data
+        keys = path.split('.')
+        value = data
+        for key in keys:
+            value = value[key]
+        return value
     except (KeyError, TypeError):
         return None
 
 def validate_fiscal_year_change(current_settings: Dict, new_settings: Dict) -> Optional[str]:
     """Validate fiscal year changes"""
-    try:
-        current_fy = current_settings.get('accounting', {}).get('fiscal_year_start')
-        new_fy = new_settings.get('accounting', {}).get('fiscal_year_start')
-        
-        if current_fy and new_fy and current_fy != new_fy:
-            # Check if there are any unposted transactions
-            transactions = load_transactions().get('transactions', [])
-            unposted = [t for t in transactions if t.get('status') == 'draft']
-            
-            if unposted:
-                return "Cannot change fiscal year while there are unposted transactions"
-                
+    if not current_settings.get('accounting'):
         return None
         
-    except Exception as e:
-        logger.error(f"Fiscal year validation error: {str(e)}")
-        return str(e)
+    current_fiscal_year = current_settings['accounting'].get('fiscal_year_start')
+    new_fiscal_year = new_settings.get('accounting', {}).get('fiscal_year_start')
+    
+    if current_fiscal_year and new_fiscal_year and current_fiscal_year != new_fiscal_year:
+        # Check if there are any transactions that would be affected
+        transactions = load_transactions()
+        if transactions:
+            return "Cannot change fiscal year start date when transactions exist"
+    return None
 
 def validate_accounting_method_change(current_settings: Dict, new_settings: Dict) -> Optional[str]:
     """Validate accounting method changes"""
-    try:
-        current_method = current_settings.get('accounting', {}).get('accounting_method')
-        new_method = new_settings.get('accounting', {}).get('accounting_method')
-        
-        if current_method and new_method and current_method != new_method:
-            # Check account balances
-            accounts = load_accounts().get('accounts', [])
-            has_balances = any(float(acc.get('balance', 0)) != 0 for acc in accounts)
-            
-            if has_balances:
-                return "Cannot change accounting method while accounts have balances"
-                
+    if not current_settings.get('accounting'):
         return None
         
-    except Exception as e:
-        logger.error(f"Accounting method validation error: {str(e)}")
-        return str(e)
-
-def create_settings_backup() -> bool:
-    """Create a backup of current settings"""
-    try:
-        backup_file = os.path.join(DATA_DIR, f'advanced_backup_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.json')
-        if os.path.exists(ADVANCED_DATA_FILE):
-            with open(ADVANCED_DATA_FILE, 'r') as src, open(backup_file, 'w') as dst:
-                json.dump(json.load(src), dst, indent=2)
-        return True
-    except Exception as e:
-        logger.error(f"Backup creation failed: {str(e)}")
-        return False
-
-@advanced_bp.route('/get_advanced', methods=['GET'])
-def get_advanced():
-    """Retrieve advanced settings or specific attributes"""
-    advanced_data = load_advanced_data()
+    current_method = current_settings['accounting'].get('accounting_method')
+    new_method = new_settings.get('accounting', {}).get('accounting_method')
     
-    if not advanced_data:
-        return jsonify({
-            'error': 'Advanced settings not found'
-        }), 404
-
-    # Check if specific attribute is requested
-    attribute = request.args.get('attribute')
-    if attribute:
-        value = get_nested_attribute(advanced_data, attribute)
-        if value is not None:
-            return jsonify({
-                attribute: value
-            }), 200
-        else:
-            return jsonify({
-                'error': f'Attribute {attribute} not found'
-            }), 404
-
-    return jsonify(advanced_data), 200
-
-@advanced_bp.route('/create_advanced', methods=['POST'])
-def create_advanced():
-    """Create advanced settings"""
-    try:
-        data = request.get_json()
-        
-        # Validate data using model
-        try:
-            settings = AdvancedSettings.from_dict(data)
-            advanced_data = settings.to_dict()
-        except Exception as e:
-            return jsonify({
-                'error': f'Invalid data format: {str(e)}'
-            }), 400
-
-        # Check if settings already exist
-        existing_settings = load_advanced_data()
-        if existing_settings:
-            return jsonify({
-                'error': 'Advanced settings already exist'
-            }), 409
-
-        # Save advanced settings data
-        if save_advanced_data(advanced_data):
-            return jsonify({
-                'message': 'Advanced settings created successfully',
-                'settings': advanced_data
-            }), 201
-        else:
-            return jsonify({
-                'error': 'Failed to save advanced settings'
-            }), 500
-
-    except Exception as e:
-        return jsonify({
-            'error': str(e)
-        }), 400
-
-@advanced_bp.route('/update_advanced', methods=['PATCH'])
-def update_advanced():
-    """Update advanced settings with validation and migration handling"""
-    try:
-        data = request.get_json()
-        
-        # Load current settings
-        current_settings = load_advanced_data()
-        
-        # Validate fiscal year change
-        fy_error = validate_fiscal_year_change(current_settings, data)
-        if fy_error:
-            return jsonify({'message': fy_error}), 400
-            
-        # Validate accounting method change
-        method_error = validate_accounting_method_change(current_settings, data)
-        if method_error:
-            return jsonify({'message': method_error}), 400
-            
-        # Create backup
-        if not create_settings_backup():
-            return jsonify({'message': 'Failed to create backup'}), 500
-            
-        # Update settings
-        deep_update(current_settings, data)
-        
-        # Save changes
-        if save_advanced_data(current_settings):
-            logger.info("Advanced settings updated successfully")
-            return jsonify(current_settings)
-        else:
-            return jsonify({'message': 'Failed to save changes'}), 500
-            
-    except Exception as e:
-        logger.error(f"Error updating advanced settings: {str(e)}")
-        return jsonify({'message': f'Error updating settings: {str(e)}'}), 500
-
-@advanced_bp.route('/delete_advanced', methods=['DELETE'])
-def delete_advanced():
-    """Reset advanced settings"""
-    try:
-        if os.path.exists(ADVANCED_DATA_FILE):
-            # Write an empty object to the file instead of deleting it
-            with open(ADVANCED_DATA_FILE, 'w') as file:
-                json.dump({}, file)
-            return jsonify({
-                'message': 'Advanced settings reset successfully'
-            }), 200
-        else:
-            return jsonify({
-                'error': 'Advanced settings not found'
-            }), 404
-    except Exception as e:
-        return jsonify({
-            'error': str(e)
-        }), 500
-
-@advanced_bp.route('/get_field_options', methods=['GET'])
-def get_field_options():
-    """Get available options for advanced settings fields"""
-    return jsonify(ADVANCED_ENUMS), 200
+    if current_method and new_method and current_method != new_method:
+        # Check if there are any accounts that would be affected
+        accounts = load_accounts()
+        if accounts:
+            return "Cannot change accounting method when accounts exist"
+    return None

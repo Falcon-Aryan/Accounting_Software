@@ -33,7 +33,11 @@ class Address:
 
 class Customer:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    DATA_FILE = os.path.join(BASE_DIR, 'data', 'customers.json')
+
+    @staticmethod
+    def get_user_data_file(uid: str) -> str:
+        """Get the path to the user's customers.json file"""
+        return os.path.join(Customer.BASE_DIR, 'data', uid, 'customers.json')
 
     @staticmethod
     def generate_customer_id() -> str:
@@ -42,11 +46,7 @@ class Customer:
             first_half = str(random.randint(1000, 9999))
             second_half = str(random.randint(1000, 9999))
             id = f"{first_half}-{second_half}"
-            
-            # Check if ID exists
-            customers = Customer.get_all()
-            if Customer.is_id_unique(id, customers):
-                return id
+            return id
 
     def __init__(self, id: str, customer_no: str, first_name: str, last_name: str, 
                  email: str, phone: str, billing_address: Address,
@@ -102,23 +102,24 @@ class Customer:
             updated_at=data.get('updated_at')
         )
 
-    @classmethod
-    def get_all(cls) -> List['Customer']:
+    @staticmethod
+    def get_all(uid: str) -> List['Customer']:
         """Get all customers"""
         try:
-            if not os.path.exists(cls.DATA_FILE):
+            file_path = Customer.get_user_data_file(uid)
+            if not os.path.exists(file_path):
                 return []
-            with open(cls.DATA_FILE, 'r') as f:
+            with open(file_path, 'r') as f:
                 data = json.load(f)
-                return [cls.from_dict(customer_data) for customer_data in data.get('customers', [])]
+                return [Customer.from_dict(customer_data) for customer_data in data.get('customers', [])]
         except Exception as e:
             print(f"Error loading customers: {str(e)}")
             return []
 
-    @classmethod
-    def get_by_id(cls, id: str) -> Optional['Customer']:
+    @staticmethod
+    def get_by_id(uid: str, id: str) -> Optional['Customer']:
         """Get customer by ID"""
-        customers = cls.get_all()
+        customers = Customer.get_all(uid)
         return next((customer for customer in customers if customer.id == id), None)
 
     @staticmethod
@@ -127,20 +128,20 @@ class Customer:
         return not any(customer.id == id for customer in customers)
 
     @staticmethod
-    def exists(first_name: str, last_name: str) -> bool:
+    def exists(uid: str, first_name: str, last_name: str) -> bool:
         """Check if a customer with the given first and last name exists"""
-        customers = Customer.get_all()
+        customers = Customer.get_all(uid)
         return any(
             c.first_name.lower() == first_name.lower() and 
             c.last_name.lower() == last_name.lower() 
             for c in customers
         )
 
-    @classmethod
-    def get_next_number(cls) -> str:
+    @staticmethod
+    def get_next_number(uid: str) -> str:
         """Get next customer number"""
         try:
-            customers = cls.get_all()
+            customers = Customer.get_all(uid)
             if not customers:
                 current_year = datetime.now().year
                 return f"CUST-{current_year}-001"
@@ -164,23 +165,46 @@ class Customer:
             current_year = datetime.now().year
             return f"CUST-{current_year}-001"
 
-    @classmethod
-    def save_all(cls, customers: List['Customer']) -> None:
-        os.makedirs(os.path.dirname(cls.DATA_FILE), exist_ok=True)
-        with open(cls.DATA_FILE, 'w') as f:
-            json.dump({"customers": [c.to_dict() for c in customers]}, f, indent=2)
+    def save(self, uid: str) -> None:
+        """Save the customer to the user's customers.json file"""
+        file_path = Customer.get_user_data_file(uid)
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+            else:
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                data = {"customers": [], "metadata": {"lastUpdated": datetime.utcnow().isoformat()}}
 
-    def save(self) -> None:
-        customers = self.get_all()
-        existing_customer = next((c for c in customers if c.id == self.id), None)
-        
-        if existing_customer:
-            customers.remove(existing_customer)
-        
-        customers.append(self)
-        self.save_all(customers)
+            # Remove existing customer if it exists
+            data['customers'] = [c for c in data['customers'] if c['id'] != self.id]
+            
+            # Add updated customer
+            data['customers'].append(self.to_dict())
+            data['metadata']['lastUpdated'] = datetime.utcnow().isoformat()
 
-    def delete(self) -> None:
-        customers = self.get_all()
-        customers = [c for c in customers if c.id != self.id]
-        self.save_all(customers)
+            # Save to file
+            with open(file_path, 'w') as f:
+                json.dump(data, f, indent=2)
+
+        except Exception as e:
+            raise Exception(f"Error saving customer: {str(e)}")
+
+    def delete(self, uid: str) -> None:
+        """Delete the customer from the user's customers.json file"""
+        file_path = Customer.get_user_data_file(uid)
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                
+                # Remove customer
+                data['customers'] = [c for c in data['customers'] if c['id'] != self.id]
+                data['metadata']['lastUpdated'] = datetime.utcnow().isoformat()
+
+                # Save updated data
+                with open(file_path, 'w') as f:
+                    json.dump(data, f, indent=2)
+
+        except Exception as e:
+            raise Exception(f"Error deleting customer: {str(e)}")

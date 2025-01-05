@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, Optional
 import re
 import uuid
+from firebase_admin import auth
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -15,10 +16,27 @@ logger = logging.getLogger(__name__)
 # File path for storing company data
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-COMPANY_DATA_FILE = os.path.join(DATA_DIR, 'company.json')
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
+
+def get_user_id():
+    """Get the user ID from the Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split('Bearer ')[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except:
+        return None
+
+def get_user_company_file(uid: str) -> str:
+    """Get the path to a user's company file"""
+    user_dir = os.path.join(DATA_DIR, uid)
+    os.makedirs(user_dir, exist_ok=True)
+    return os.path.join(user_dir, 'company.json')
 
 # Company field enums
 COMPANY_ENUMS = {
@@ -89,43 +107,13 @@ def validate_company_data(data: Dict) -> Optional[str]:
         logger.error(f"Validation error: {str(e)}")
         return f"Validation error: {str(e)}"
 
-def create_audit_log(action: str, data: Dict) -> None:
-    """Create an audit log entry directly in company.json"""
-    try:
-        # Load current company data
-        company_data = {}
-        if os.path.exists(COMPANY_DATA_FILE):
-            with open(COMPANY_DATA_FILE, 'r') as f:
-                company_data = json.load(f)
-        
-        # Initialize audit log array if it doesn't exist
-        if 'audit_log' not in company_data:
-            company_data['audit_log'] = []
-        
-        # Create new audit entry
-        now = datetime.utcnow().date().isoformat()
-        log_entry = {
-            'id': str(uuid.uuid4()),
-            'timestamp': now,
-            'action': action,
-            'data': data
-        }
-        
-        # Add to audit log
-        company_data['audit_log'].append(log_entry)
-        
-        # Save updated company data
-        with open(COMPANY_DATA_FILE, 'w') as f:
-            json.dump(company_data, f, indent=2)
-            
-    except Exception as e:
-        logger.error(f"Failed to create audit log: {str(e)}")
-
 def load_company_data():
     """Load company data from JSON file"""
     try:
-        if os.path.exists(COMPANY_DATA_FILE):
-            with open(COMPANY_DATA_FILE, 'r') as file:
+        user_id = get_user_id()
+        company_file = get_user_company_file(user_id)
+        if os.path.exists(company_file):
+            with open(company_file, 'r') as file:
                 data = json.load(file)
                 # If file is empty or just contains {}, return default template
                 if not data:
@@ -175,7 +163,9 @@ def load_company_data():
 def save_company_data(data):
     """Save company data to JSON file"""
     try:
-        with open(COMPANY_DATA_FILE, 'w') as file:
+        user_id = get_user_id()
+        company_file = get_user_company_file(user_id)
+        with open(company_file, 'w') as file:
             json.dump(data, file, indent=4)
         return True
     except Exception as e:
@@ -221,6 +211,13 @@ def get_nested_attribute(data, path):
 def create_company():
     """Create a new company"""
     try:
+        user_id = get_user_id()
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'message': 'Unauthorized'
+            }), 401
+        
         company_data = request.get_json()
         
         # Check if company already exists
@@ -253,9 +250,6 @@ def create_company():
         
         # Save to file
         if save_company_data(company_data):
-            # Create audit log
-            create_audit_log('create', company_data)
-            
             logger.info(f"Company created successfully")
             return jsonify({
                 'success': True,
@@ -278,6 +272,12 @@ def create_company():
 @company_bp.route('/get_company', methods=['GET'])
 def get_company():
     """Retrieve company details or specific attributes"""
+    user_id = get_user_id()
+    if not user_id:
+        return jsonify({
+            'error': 'Unauthorized'
+        }), 401
+    
     company_data = load_company_data()
     
     if not company_data:
@@ -305,6 +305,12 @@ def get_company():
 def update_company():
     """Update company details"""
     try:
+        user_id = get_user_id()
+        if not user_id:
+            return jsonify({
+                'error': 'Unauthorized'
+            }), 401
+        
         update_data = request.get_json()
         existing_company = load_company_data()
 
@@ -328,12 +334,6 @@ def update_company():
 
         # Save updated data
         if save_company_data(existing_company):
-            # Create audit log
-            create_audit_log('update', {
-                'changes': update_data,
-                'timestamp': datetime.utcnow().isoformat()
-            })
-            
             logger.info(f"Company data updated successfully")
             return jsonify({
                 'message': 'Company updated successfully',
@@ -354,14 +354,18 @@ def update_company():
 def delete_company():
     """Delete a company"""
     try:
-        if os.path.exists(COMPANY_DATA_FILE):
+        user_id = get_user_id()
+        if not user_id:
+            return jsonify({
+                'error': 'Unauthorized'
+            }), 401
+        
+        company_file = get_user_company_file(user_id)
+        if os.path.exists(company_file):
             # Write an empty object to the file instead of deleting it
-            with open(COMPANY_DATA_FILE, 'w') as file:
+            with open(company_file, 'w') as file:
                 json.dump({}, file)
-            # Create audit log
-            create_audit_log('delete', {})
             
-            logger.info(f"Company deleted successfully")
             return jsonify({
                 'message': 'Company deleted successfully'
             }), 200

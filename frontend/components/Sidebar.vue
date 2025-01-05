@@ -1,18 +1,18 @@
 <template>
-  <aside class="w-64 bg-white border-r border-gray-200 h-screen fixed z-50">
+  <aside class="w-64 bg-white border-r border-gray-200 h-screen fixed z-50 flex flex-col">
     <!-- Logo -->
     <div class="px-6 py-4 border-b border-gray-200">
       <h1 class="text-xl font-bold text-gray-900">Accounting Software</h1>
     </div>
 
     <!-- Navigation -->
-    <nav class="mt-4">
+    <nav class="mt-4 flex-grow">
       <ul class="space-y-2">
         <!-- Dashboard -->
         <li>
-          <NuxtLink to="/" class="flex items-center px-6 py-2 text-gray-700 hover:bg-gray-100">
+          <a @click.prevent="handleNavigation('/dashboard')" class="flex items-center px-6 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">
             <span>Dashboard</span>
-          </NuxtLink>
+          </a>
         </li>
 
         <!-- Sales with Dropdown -->
@@ -23,16 +23,16 @@
           </div>
           <ul class="hidden group-hover:block absolute left-full top-0 w-48 bg-white border border-gray-200 shadow-lg">
             <li>
-              <NuxtLink to="/estimates" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Estimates</NuxtLink>
+              <a @click.prevent="handleNavigation('/estimates')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">Estimates</a>
             </li>
             <li>
-              <NuxtLink to="/invoices" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Invoices</NuxtLink>
+              <a @click.prevent="handleNavigation('/invoices')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">Invoices</a>
             </li>
             <li>
-              <NuxtLink to="/prodServ" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Products & Services</NuxtLink>
+              <a @click.prevent="handleNavigation('/prodServ')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">Products & Services</a>
             </li>
             <li>
-              <NuxtLink to="/customers" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Customers</NuxtLink>
+              <a @click.prevent="handleNavigation('/customers')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">Customers</a>
             </li>
           </ul>
         </li>
@@ -45,10 +45,10 @@
           </div>
           <ul class="hidden group-hover:block absolute left-full top-0 w-48 bg-white border border-gray-200 shadow-lg">
             <li>
-              <NuxtLink to="/transactions" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">All Transactions</NuxtLink>
+              <a @click.prevent="handleNavigation('/transactions')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">All Transactions</a>
             </li>
             <li>
-              <NuxtLink to="/chart-of-accounts" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Chart of Accounts</NuxtLink>
+              <a @click.prevent="handleNavigation('/chart-of-accounts')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">Chart of Accounts</a>
             </li>
           </ul>
         </li>
@@ -61,38 +61,65 @@
           </div>
           <ul class="hidden group-hover:block absolute left-full top-0 w-48 bg-white border border-gray-200 shadow-lg">
             <li>
-              <NuxtLink to="/expenses" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Expenses</NuxtLink>
+              <a @click.prevent="handleNavigation('/expenses')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">Expenses</a>
             </li>
             <li>
-              <NuxtLink to="/expenses/bills" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Bills</NuxtLink>
+              <a @click.prevent="handleNavigation('/expenses/bills')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">Bills</a>
             </li>
             <li>
-              <NuxtLink to="/expenses/vendors" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Vendors</NuxtLink>
+              <a @click.prevent="handleNavigation('/expenses/vendors')" class="block px-4 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">Vendors</a>
             </li>
           </ul>
         </li>
 
         <!-- Reports -->
         <li>
-          <NuxtLink to="/reports" class="flex items-center px-6 py-2 text-gray-700 hover:bg-gray-100">
+          <a @click.prevent="handleNavigation('/reports')" class="flex items-center px-6 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">
             <span>Reports</span>
-          </NuxtLink>
+          </a>
         </li>
 
         <!-- Settings -->
         <li>
-          <NuxtLink to="/settings" class="flex items-center px-6 py-2 text-gray-700 hover:bg-gray-100">
+          <a @click.prevent="handleNavigation('/settings')" class="flex items-center px-6 py-2 text-gray-700 hover:bg-gray-100 cursor-pointer">
             <span>Settings</span>
-          </NuxtLink>
+          </a>
         </li>
       </ul>
     </nav>
+
+    <!-- Logout Button -->
+    <div class="border-t border-gray-200 p-4">
+      <a @click.prevent="handleLogout" class="w-full px-4 py-2 text-red-600 hover:bg-gray-100 rounded-md flex items-center cursor-pointer">
+        <span class="flex-grow">Logout</span>
+      </a>
+    </div>
   </aside>
 </template>
 
 <script setup>
-import { useRoute } from '#app'
-const route = useRoute()
+import { useUserSync } from '~/composables/useUserSync'
+import { getAuth, signOut } from 'firebase/auth'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+const { syncUser } = useUserSync()
+
+// Function to handle navigation with user sync
+const handleNavigation = async (path) => {
+  await syncUser()
+  router.push(path)
+}
+
+const handleLogout = async () => {
+  try {
+    const auth = getAuth()
+    await signOut(auth)
+    router.push('/login')
+  } catch (error) {
+    console.error('Error signing out:', error)
+  }
+}
 </script>
 
 <style scoped>

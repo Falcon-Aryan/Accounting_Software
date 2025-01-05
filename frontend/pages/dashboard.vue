@@ -87,53 +87,47 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
+definePageMeta({
+  middleware: ['auth']
+})
+
 import { ref, onMounted } from 'vue'
 import { useRuntimeConfig, navigateTo } from 'nuxt/app'
 import { useFirebaseAuth } from '../composables/useFirebaseAuth'
 
-interface Activity {
-  id: string
-  description: string
-}
-
 const { user, logout } = useFirebaseAuth()
 
 const config = useRuntimeConfig()
-const recentActivity = ref<Activity[]>([])
+const recentActivity = ref([])
 const estimatesSummary = ref({})
 const invoicesSummary = ref({})
 const customersSummary = ref({})
 
-// Redirect to login if not authenticated
 onMounted(() => {
-  if (!user.value) {
-    navigateTo('/')
-  } else {
-    // Fetch recent activity data
-    fetch(`${config.public.apiBase}/api/activity/recent`)
-      .then(response => response.json())
-      .then(data => recentActivity.value = data)
-      .catch(error => console.error('Error fetching recent activity:', error))
+  // Fetch recent activity data
+  fetch(`${config.public.apiBase}/api/activity/recent`)
+    .then(response => response.json())
+    .then(data => recentActivity.value = data)
+    .catch(error => console.error('Error fetching recent activity:', error))
 
-    // Fetch estimates summary
-    fetch(`${config.public.apiBase}/estimates/summary`)
-      .then(response => response.json())
-      .then(data => estimatesSummary.value = data)
-      .catch(error => console.error('Error fetching estimates summary:', error))
+  // Fetch estimates summary
+  fetch(`${config.public.apiBase}/estimates/summary`)
+    .then(response => response.json())
+    .then(data => estimatesSummary.value = data)
+    .catch(error => console.error('Error fetching estimates summary:', error))
 
-    // Fetch invoices summary
-    fetch(`${config.public.apiBase}/invoices/summary`)
-      .then(response => response.json())
-      .then(data => invoicesSummary.value = data)
-      .catch(error => console.error('Error fetching invoices summary:', error))
+  // Fetch invoices summary
+  fetch(`${config.public.apiBase}/invoices/summary`)
+    .then(response => response.json())
+    .then(data => invoicesSummary.value = data)
+    .catch(error => console.error('Error fetching invoices summary:', error))
 
-    // Fetch customers summary
-    fetch(`${config.public.apiBase}/api/customers/summary`)
-      .then(response => response.json())
-      .then(data => customersSummary.value = data)
-      .catch(error => console.error('Error fetching customers summary:', error))
-  }
+  // Fetch customers summary
+  fetch(`${config.public.apiBase}/api/customers/summary`)
+    .then(response => response.json())
+    .then(data => customersSummary.value = data)
+    .catch(error => console.error('Error fetching customers summary:', error))
 })
 
 const handleLogout = async () => {

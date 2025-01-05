@@ -168,6 +168,10 @@
 </template>
 
 <script setup>
+definePageMeta({
+  middleware: ['auth']
+})
+
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRuntimeConfig } from '#app'
 import TablePageLayout from '~/components/TablePageLayout.vue'

@@ -232,6 +232,10 @@
 </template>
 
 <script setup>
+definePageMeta({
+  middleware: ['auth']
+})
+
 import { ref, computed } from 'vue'
 import { useRuntimeConfig } from '#imports'
 

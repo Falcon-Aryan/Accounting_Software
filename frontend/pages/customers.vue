@@ -137,6 +137,10 @@
 </template>
 
 <script setup>
+import { getAuth } from 'firebase/auth'
+definePageMeta({
+  middleware: ['auth']
+})
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRuntimeConfig } from '#app'
 import BaseButton from '../components/BaseButton.vue'
@@ -174,7 +178,13 @@ const filteredCustomers = computed(() => {
 const fetchCustomers = async () => {
   isLoading.value = true
   try {
-    const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`)
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
     const data = await response.json()
     customers.value = data.customers
   } catch (error) {
@@ -235,54 +245,56 @@ const closeEditCustomerModal = () => {
 
 const handleNewCustomer = async (customerData) => {
   try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/customers/create_customer`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
       },
-      body: JSON.stringify(customerData),
+      body: JSON.stringify(customerData)
     })
     const data = await response.json()
-    
-    if (!response.ok) {
-      if (newCustomerModalRef.value) {
-        newCustomerModalRef.value.setError(data.error || 'Failed to create customer')
-      }
-      return
-    }
-    
-    if (data.customer) {
-      customers.value.unshift(data.customer)
+    if (response.ok) {
+      customers.value.push(data.customer)
       closeNewCustomerModal()
+      showSuccessToast('Customer created successfully')
+    } else {
+      showErrorToast(data.error || 'Failed to create customer')
     }
   } catch (error) {
     console.error('Error creating customer:', error)
-    if (newCustomerModalRef.value) {
-      newCustomerModalRef.value.setError('Failed to create customer. Please try again.')
-    }
+    showErrorToast('Failed to create customer')
   }
 }
 
 const handleEditCustomer = async (customerData) => {
   try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/customers/update_customer/${customerData.id}`, {
       method: 'PUT',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
       },
       body: JSON.stringify(customerData)
     })
     const data = await response.json()
-    
-    if (data.customer) {
-      const index = customers.value.findIndex(c => c.id === data.customer.id)
+    if (response.ok) {
+      const index = customers.value.findIndex(c => c.id === customerData.id)
       if (index !== -1) {
         customers.value[index] = data.customer
       }
       closeEditCustomerModal()
+      showSuccessToast('Customer updated successfully')
+    } else {
+      showErrorToast(data.error || 'Failed to update customer')
     }
   } catch (error) {
     console.error('Error updating customer:', error)
+    showErrorToast('Failed to update customer')
   }
 }
 
@@ -290,16 +302,24 @@ const deleteCustomer = async (customer) => {
   if (!confirm('Are you sure you want to delete this customer?')) return
 
   try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/customers/delete_customer/${customer.id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
     })
-    const data = await response.json()
-    if (data.message) {
+    if (response.ok) {
       customers.value = customers.value.filter(c => c.id !== customer.id)
-      openDropdownId.value = null
+      showSuccessToast('Customer deleted successfully')
+    } else {
+      const data = await response.json()
+      showErrorToast(data.error || 'Failed to delete customer')
     }
   } catch (error) {
     console.error('Error deleting customer:', error)
+    showErrorToast('Failed to delete customer')
   }
 }
 

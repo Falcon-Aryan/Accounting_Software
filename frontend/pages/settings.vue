@@ -1,4 +1,16 @@
 <template>
+  <div v-if="isLoading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div class="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-indigo-500"></div>
+  </div>
+  <div v-if="errorMessage" class="fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50">
+  <span class="block sm:inline">{{ errorMessage }}</span>
+  <span class="absolute top-0 bottom-0 right-0 px-4 py-3" @click="errorMessage = ''">
+    <svg class="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+      <title>Close</title>
+      <path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/>
+    </svg>
+  </span>
+  </div>
   <div>
     <!-- Navigation Bar -->
     <nav class="bg-white shadow-sm">
@@ -494,14 +506,20 @@
 </template>
 
 <script setup>
+definePageMeta({
+  middleware: ['auth']
+})
+
 import { ref, onMounted, watch } from 'vue'
 import { useRuntimeConfig } from '#app'
+import { getAuth } from 'firebase/auth'
 import debounce from 'lodash/debounce'
 
 const config = useRuntimeConfig()
 const activeSection = ref('company')
 const isLoading = ref(false)
 const errorMessage = ref('')
+const isSaving = ref(false)
 
 const tabs = ref([
   { name: 'company', label: 'Company' },
@@ -594,123 +612,210 @@ const advancedData = ref({
 
 const fetchFieldOptions = async () => {
   try {
-    console.log('Fetching field options...')
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    
     // Fetch company options
-    const companyRes = await fetch(`${config.public.apiBase}/api/company/get_field_options`)
-    if (companyRes.ok) {
-      const companyData = await companyRes.json()
-      console.log('Company options:', companyData)
-      // Map company enums
-      fieldOptions.value.identity_types = companyData.identity_types || []
-      fieldOptions.value.tax_forms = companyData.tax_forms || []
-      fieldOptions.value.states = companyData.states || []
-    } else {
-      console.error('Failed to fetch company options:', await companyRes.text())
+    const companyRes = await fetch(`${config.public.apiBase}/api/company/get_field_options`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
+    if (!companyRes.ok) {
+      throw new Error('Failed to fetch company options')
     }
-
+    const companyData = await companyRes.json()
+    
     // Fetch advanced options
-    const advancedRes = await fetch(`${config.public.apiBase}/api/advanced/get_field_options`)
-    if (advancedRes.ok) {
-      const advancedData = await advancedRes.json()
-      console.log('Advanced options:', advancedData)
-      // Map advanced enums
-      fieldOptions.value.fiscal_year_start = advancedData.fiscal_year_start || []
-      fieldOptions.value.income_tax_year_start = advancedData.income_tax_year_start || []
-      fieldOptions.value.accounting_methods = advancedData.accounting_methods || []
-      fieldOptions.value.tips_accounts = advancedData.tips_accounts || []
-      fieldOptions.value.currencies = advancedData.currencies || []
-      fieldOptions.value.date_formats = advancedData.date_formats || []
-      fieldOptions.value.number_formats = advancedData.number_formats || []
-      fieldOptions.value.sign_out_after_inactivity = advancedData.sign_out_after_inactivity || []
-    } else {
-      console.error('Failed to fetch advanced options:', await advancedRes.text())
+    const advancedRes = await fetch(`${config.public.apiBase}/api/advanced/get_field_options`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
+    if (!advancedRes.ok) {
+      throw new Error('Failed to fetch advanced options')
+    }
+    const advancedData = await advancedRes.json()
+    
+    // Update field options
+    fieldOptions.value = {
+      ...fieldOptions.value,
+      identity_types: companyData.identity_types || [],
+      tax_forms: companyData.tax_forms || [],
+      states: companyData.states || [],
+      fiscal_year_start: advancedData.fiscal_year_start || [],
+      income_tax_year_start: advancedData.income_tax_year_start || [],
+      accounting_methods: advancedData.accounting_methods || [],
+      tips_accounts: advancedData.tips_accounts || [],
+      currencies: advancedData.currencies || [],
+      date_formats: advancedData.date_formats || [],
+      number_formats: advancedData.number_formats || [],
+      sign_out_after_inactivity: advancedData.sign_out_after_inactivity || []
     }
   } catch (error) {
     console.error('Error fetching field options:', error)
+    errorMessage.value = 'Failed to load field options'
+  }
+}
+
+// Fetch company settings
+const fetchCompanySettings = async () => {
+  try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    
+    const response = await fetch(`${config.public.apiBase}/api/company/get_company`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
+    
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to fetch company settings')
+    }
+    
+    const data = await response.json()
+    companyData.value = data
+  } catch (error) {
+    console.error('Error fetching company settings:', error)
+    errorMessage.value = 'Failed to load company settings'
+  }
+}
+
+// Fetch advanced settings
+const fetchAdvancedSettings = async () => {
+  try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    
+    const response = await fetch(`${config.public.apiBase}/api/advanced/get_advanced`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
+    
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to fetch advanced settings')
+    }
+    
+    const data = await response.json()
+    advancedData.value = data
+  } catch (error) {
+    console.error('Error fetching advanced settings:', error)
+    errorMessage.value = 'Failed to load advanced settings'
+  }
+}
+
+// Save company settings
+const saveCompanySettings = async () => {
+  if (isSaving.value) return
+  
+  try {
+    isSaving.value = true
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    
+    const response = await fetch(`${config.public.apiBase}/api/company/update_company`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify(companyData.value)
+    })
+    
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to save company settings')
+    }
+    
+    const data = await response.json()
+    if (data.company) {
+      Object.keys(data.company).forEach(key => {
+        if (JSON.stringify(companyData.value[key]) !== JSON.stringify(data.company[key])) {
+          companyData.value[key] = data.company[key]
+        }
+      })
+    }
+  } catch (error) {
+    console.error('Error saving company settings:', error)
+    errorMessage.value = 'Failed to save company settings'
+  } finally {
+    isSaving.value = false
+  }
+}
+
+// Save advanced settings
+const saveAdvancedSettings = async () => {
+  if (isSaving.value) return
+  
+  try {
+    isSaving.value = true
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    
+    const response = await fetch(`${config.public.apiBase}/api/advanced/update_advanced`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify(advancedData.value)
+    })
+    
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to save advanced settings')
+    }
+    
+    const data = await response.json()
+    if (data.settings) {
+      Object.keys(data.settings).forEach(key => {
+        if (JSON.stringify(advancedData.value[key]) !== JSON.stringify(data.settings[key])) {
+          advancedData.value[key] = data.settings[key]
+        }
+      })
+    }
+  } catch (error) {
+    console.error('Error saving advanced settings:', error)
+    errorMessage.value = 'Failed to save advanced settings'
+  } finally {
+    isSaving.value = false
   }
 }
 
 // Load all settings data when component mounts
 onMounted(async () => {
   try {
-    console.log('Component mounted')
-    // First fetch field options
-    await fetchFieldOptions()
-    console.log('Field options loaded:', fieldOptions.value)
-
-    // Then load company data
-    const companyRes = await fetch(`${config.public.apiBase}/api/company/get_company`)
-    if (companyRes.ok) {
-      const data = await companyRes.json()
-      console.log('Company data loaded:', data)
-      companyData.value = data
-    } else {
-      console.error('Failed to load company data:', await companyRes.text())
-    }
-
-    // Finally load advanced settings
-    const advancedRes = await fetch(`${config.public.apiBase}/api/advanced/get_advanced`)
-    if (advancedRes.ok) {
-      const data = await advancedRes.json()
-      console.log('Advanced data loaded:', data)
-      advancedData.value = data
-    } else {
-      console.error('Failed to load advanced data:', await advancedRes.text())
-    }
+    isLoading.value = true
+    await Promise.all([
+      fetchFieldOptions(),
+      fetchCompanySettings(),
+      fetchAdvancedSettings()
+    ])
   } catch (error) {
-    console.error('Error in onMounted:', error)
+    console.error('Error loading settings:', error)
+    errorMessage.value = 'Failed to load settings'
+  } finally {
+    isLoading.value = false
   }
 })
 
-// Save functions
-const saveCompanySettings = async () => {
-  try {
-    console.log('Saving company settings:', companyData.value)
-    const response = await fetch(`${config.public.apiBase}/api/company/update_company`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(companyData.value)
-    })
-
-    if (response.ok) {
-      console.log('Company settings saved successfully')
-    } else {
-      console.error('Failed to save company settings:', await response.text())
-    }
-  } catch (error) {
-    console.error('Error saving company settings:', error)
+// Auto-save when company settings change
+watch(companyData, debounce(async () => {
+  if (!isLoading.value && !isSaving.value) {
+    await saveCompanySettings()
   }
-}
+}, 1000), { deep: true })
 
-const saveAdvancedSettings = async () => {
-  try {
-    console.log('Saving advanced settings:', advancedData.value)
-    const response = await fetch(`${config.public.apiBase}/api/advanced/update_advanced`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(advancedData.value)
-    })
-
-    if (response.ok) {
-      console.log('Advanced settings saved successfully')
-    } else {
-      console.error('Failed to save advanced settings:', await response.text())
-    }
-  } catch (error) {
-    console.error('Error saving advanced settings:', error)
+// Auto-save when advanced settings change
+watch(advancedData, debounce(async () => {
+  if (!isLoading.value && !isSaving.value) {
+    await saveAdvancedSettings()
   }
-}
-
-// Watch for changes in each section's data and auto-save
-watch(companyData, (newVal) => {
-}, { deep: true })
-
-watch(advancedData, (newVal) => {
-}, { deep: true })
+}, 1000), { deep: true })
 
 // Watch for changes in same_as fields
 watch(() => companyData.value.company_name_info.same_as_company_name, (newVal) => {

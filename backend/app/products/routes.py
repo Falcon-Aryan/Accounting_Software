@@ -8,18 +8,35 @@ import random
 import sys
 
 from . import products_bp
-from .models import Product, ProductsSummary, ITEM_TYPES
+from .models import (
+    Product, 
+    ProductsSummary, 
+    ITEM_TYPES, 
+    get_user_products_file,
+    load_user_products as load_products_from_file,
+    save_user_products as save_products_to_file
+)
 from app.chart_of_accounts.routes import load_chart_of_accounts
+from firebase_admin import auth
 
 # File path handling
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-PRODUCTS_FILE = os.path.join(DATA_DIR, 'products.json')
-
-# Default account IDs - these should match your chart of accounts
 SALES_REVENUE_ID = "4000-0001"     # Sales Revenue
 COGS_ID = "5000-0001"              # Cost of Goods Sold
 INVENTORY_ASSET_ID = "1200-0001"   # Inventory Asset
+
+def get_user_id():
+    """Get the user ID from the Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split('Bearer ')[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except:
+        return None
 
 def deep_update(original: Dict, update: Dict) -> None:
     """Recursively update nested dictionaries"""
@@ -31,22 +48,38 @@ def deep_update(original: Dict, update: Dict) -> None:
 
 def load_products() -> Dict:
     """Load products data from JSON file"""
+    user_id = get_user_id()
+    if not user_id:
+        return {'products': []}
+    return load_products_from_file(user_id)
+
+def save_products(data: Dict) -> None:
+    """Save products data to JSON file"""
+    user_id = get_user_id()
+    if not user_id:
+        return
+    save_products_to_file(user_id, data)
+
+def load_user_products(uid: str) -> Dict:
+    """Load user products data from JSON file"""
+    file_path = get_user_products_file(uid)
     try:
-        if os.path.exists(PRODUCTS_FILE):
-            with open(PRODUCTS_FILE, 'r') as f:
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
                 return json.load(f)
     except Exception as e:
-        print(f"Error loading products data: {str(e)}")
+        print(f"Error loading user products data: {str(e)}")
     return {'products': [], 'summary': {}}
 
-def save_products(data: Dict) -> bool:
-    """Save products data to JSON file"""
+def save_user_products(uid: str, data: Dict) -> bool:
+    """Save user products data to JSON file"""
+    file_path = get_user_products_file(uid)
     try:
-        with open(PRODUCTS_FILE, 'w') as f:
+        with open(file_path, 'w') as f:
             json.dump(data, f, indent=2)
         return True
     except Exception as e:
-        print(f"Error saving products data: {str(e)}")
+        print(f"Error saving user products data: {str(e)}")
         return False
 
 def update_summary(products: List[Dict]) -> ProductsSummary:
@@ -251,6 +284,102 @@ def create_product():
     except Exception as e:
         return jsonify({"error": {"message": str(e)}}), 500
 
+@products_bp.route('/list_products', methods=['GET'])
+def list_user_products():
+    """List all user products with optional filtering"""
+    try:
+        uid = get_user_id()
+        if not uid:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        data = load_user_products(uid)
+        products = data.get('products', [])
+
+        # Apply filters
+        item_type = request.args.get('type')
+        if item_type and item_type in ITEM_TYPES:
+            products = [p for p in products if p.get('type') == item_type]
+
+        # Create summary
+        summary = ProductsSummary(
+            total_count=len(products),
+            service_count=len([p for p in products if p.get('type') == 'service']),
+            inventory_count=len([p for p in products if p.get('type') == 'inventory_item'])
+        )
+
+        return jsonify({
+            'products': products,
+            'summary': summary.to_dict()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@products_bp.route('/get_product/<product_id>', methods=['GET'])
+def get_user_product(product_id):
+    """Get user product by ID"""
+    try:
+        uid = get_user_id()
+        if not uid:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        data = load_user_products(uid)
+        products = data.get('products', [])
+        product = next((p for p in products if p.get('id') == product_id), None)
+        
+        if product:
+            return jsonify(product)
+        return jsonify({'error': 'Product not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@products_bp.route('/create_product', methods=['POST'])
+def create_user_product():
+    """Create a new user product"""
+    try:
+        uid = get_user_id()
+        if not uid:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        # Validate request data
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        validation_error = validate_product(data)
+        if validation_error:
+            return jsonify({'error': validation_error}), 400
+
+        # Load existing products
+        products_data = load_user_products(uid)
+        products = products_data.get('products', [])
+
+        # Generate unique ID
+        product_id = generate_product_id()
+        while not is_id_unique(product_id, products):
+            product_id = generate_product_id()
+
+        # Create new product
+        now = datetime.utcnow().isoformat()
+        product_dict = {
+            'id': product_id,
+            'created_at': now,
+            'updated_at': now,
+            **data
+        }
+
+        # Create Product instance and convert back to dict
+        product = Product.from_dict(product_dict)
+        product_dict = product.to_dict()
+
+        # Add to products list and save
+        products.append(product_dict)
+        if save_user_products(uid, {'products': products}):
+            return jsonify(product_dict), 201
+        return jsonify({'error': 'Failed to save product'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @products_bp.route('/update/<product_id>', methods=['PUT'])
 def update_product(product_id):
     """Update a product"""
@@ -320,6 +449,55 @@ def update_product(product_id):
     except Exception as e:
         return jsonify({"error": {"message": str(e)}}), 500
 
+@products_bp.route('/update_product/<product_id>', methods=['PATCH'])
+def update_user_product(product_id):
+    """Update a user product"""
+    try:
+        uid = get_user_id()
+        if not uid:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        # Validate request data
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        validation_error = validate_product(data, for_update=True)
+        if validation_error:
+            return jsonify({'error': validation_error}), 400
+
+        # Load existing products
+        products_data = load_user_products(uid)
+        products = products_data.get('products', [])
+
+        # Find product to update
+        product_index = next((i for i, p in enumerate(products) if p.get('id') == product_id), -1)
+        if product_index == -1:
+            return jsonify({'error': 'Product not found'}), 404
+
+        # Update product
+        existing_product = products[product_index]
+        update_data = {**data}
+        
+        # Update timestamp
+        update_data['updated_at'] = datetime.utcnow().isoformat()
+
+        # Deep update the existing product
+        deep_update(existing_product, update_data)
+
+        # Create Product instance and convert back to dict
+        product = Product.from_dict(existing_product)
+        product_dict = product.to_dict()
+
+        # Update in list and save
+        products[product_index] = product_dict
+        if save_user_products(uid, {'products': products}):
+            return jsonify(product_dict)
+        return jsonify({'error': 'Failed to save product'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @products_bp.route('/delete/<product_id>', methods=['DELETE'])
 def delete_product(product_id):
     """Delete a product"""
@@ -347,3 +525,29 @@ def delete_product(product_id):
             
     except Exception as e:
         return jsonify({"error": {"message": str(e)}}), 500
+
+@products_bp.route('/delete_product/<product_id>', methods=['DELETE'])
+def delete_user_product(product_id):
+    """Delete a user product"""
+    try:
+        uid = get_user_id()
+        if not uid:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        # Load existing products
+        products_data = load_user_products(uid)
+        products = products_data.get('products', [])
+
+        # Find product to delete
+        product_index = next((i for i, p in enumerate(products) if p.get('id') == product_id), -1)
+        if product_index == -1:
+            return jsonify({'error': 'Product not found'}), 404
+
+        # Remove product and save
+        products.pop(product_index)
+        if save_user_products(uid, {'products': products}):
+            return jsonify({'message': 'Product deleted successfully'})
+        return jsonify({'error': 'Failed to save changes'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

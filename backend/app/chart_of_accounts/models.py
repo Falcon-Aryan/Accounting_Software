@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from datetime import datetime
+import os
 
 # Define the valid detail types for each account type
 ACCOUNT_TYPE_DETAILS = {
@@ -214,6 +215,18 @@ class Account:
     lastTransactionDate: Optional[datetime] = None
     active: bool = True
     isDefault: bool = False
+
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    @staticmethod
+    def get_user_data_file(uid: str) -> str:
+        """Get the path to the user's chart_of_accounts.json file"""
+        return os.path.join(Account.BASE_DIR, 'data', uid, 'chart_of_accounts.json')
+
+    @staticmethod
+    def get_default_accounts_file() -> str:
+        """Get the path to the default accounts template file"""
+        return os.path.join(Account.BASE_DIR, 'data', 'defaults', 'default_accounts.json')
 
     def __post_init__(self):
         """Set the normal balance type based on account type"""

@@ -178,12 +178,9 @@
 </template>
 
 <script setup>
-definePageMeta({
-  middleware: ['auth']
-})
-
 import { ref, computed, onMounted } from 'vue'
 import { useRuntimeConfig } from '#app'
+import { getAuth } from 'firebase/auth'
 import TablePageLayout from '../components/TablePageLayout.vue'
 import BaseButton from '../components/BaseButton.vue'
 import NewAccountModal from '../components/NewAccountModal.vue'
@@ -299,9 +296,13 @@ const isRecalculating = ref(false)
 
 async function fetchAccounts() {
   try {
-    const config = useRuntimeConfig()
-    isLoading.value = true
-    const response = await fetch(`${config.public.apiBase}/api/coa/list_accounts`)
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/coa/list_accounts`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
@@ -374,9 +375,12 @@ function viewReport(account) {
 
 async function handleNewAccount(accountData) {
   try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/coa/create_account`, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(accountData)
@@ -410,9 +414,12 @@ async function handleNewAccount(accountData) {
 
 async function handleEditAccount(accountData) {
   try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/coa/update/${accountData.id}`, {
       method: 'PATCH',
       headers: {
+        'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(accountData)
@@ -432,8 +439,13 @@ async function handleEditAccount(accountData) {
 
 async function handleDeleteAccount(accountId) {
   try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/coa/delete_account/${accountId}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
     })
     
     if (!response.ok) {
@@ -450,10 +462,13 @@ async function handleDeleteAccount(accountId) {
 
 async function recalculateBalances() {
   try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
     isRecalculating.value = true
     const response = await fetch(`${config.public.apiBase}/api/coa/recalculate-balances`, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       }
     })

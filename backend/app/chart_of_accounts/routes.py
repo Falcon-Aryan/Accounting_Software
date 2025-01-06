@@ -5,6 +5,7 @@ import sys
 from typing import Dict, List, Optional
 import random
 from datetime import datetime
+from firebase_admin import auth
 
 from . import chart_of_accounts_bp
 from .models import Account, AccountsSummary
@@ -31,42 +32,66 @@ def deep_update(original: Dict, update: Dict) -> None:
         else:
             original[key] = value
 
-def load_accounts() -> Dict:
+def get_user_id():
+    """Get the user ID from the Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split('Bearer ')[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except:
+        return None
+
+def load_accounts(uid: str) -> Dict:
     """Load accounts data from JSON file"""
     try:
-        if os.path.exists(ACCOUNTS_FILE):
-            with open(ACCOUNTS_FILE, 'r') as f:
+        accounts_file = Account.get_user_data_file(uid)
+        if os.path.exists(accounts_file):
+            with open(accounts_file, 'r') as f:
                 accounts_data = json.load(f)
                 
                 # Check if accounts list is empty
                 if len(accounts_data.get('accounts', [])) == 0:
                     # Initialize with default accounts
-                    if initialize_accounts():
-                        with open(ACCOUNTS_FILE, 'r') as f:
+                    default_file = Account.get_default_accounts_file()
+                    if os.path.exists(default_file):
+                        with open(default_file, 'r') as f:
                             accounts_data = json.load(f)
+                            save_accounts(accounts_data, uid)
                     
                 return accounts_data
+        else:
+            # If user's file doesn't exist, copy from default
+            default_file = Account.get_default_accounts_file()
+            if os.path.exists(default_file):
+                with open(default_file, 'r') as f:
+                    accounts_data = json.load(f)
+                    save_accounts(accounts_data, uid)
+                    return accounts_data
     except Exception as e:
         print(f"Error loading accounts data: {str(e)}")
     return {'accounts': [], 'summary': {}}
 
-def load_chart_of_accounts() -> Dict:
-    """Load chart of accounts data from JSON file"""
-    return load_accounts()
-
-def save_accounts(data: Dict) -> bool:
+def save_accounts(data: Dict, uid: str) -> None:
     """Save accounts data to JSON file"""
     try:
-        with open(ACCOUNTS_FILE, 'w') as f:
+        accounts_file = Account.get_user_data_file(uid)
+        os.makedirs(os.path.dirname(accounts_file), exist_ok=True)
+        with open(accounts_file, 'w') as f:
             json.dump(data, f, indent=2)
-        return True
     except Exception as e:
         print(f"Error saving accounts data: {str(e)}")
-        return False
 
-def save_chart_of_accounts(data: Dict) -> bool:
+def load_chart_of_accounts(uid: str) -> Dict:
+    """Load chart of accounts data from JSON file"""
+    return load_accounts(uid)
+
+def save_chart_of_accounts(data: Dict, uid: str) -> bool:
     """Save chart of accounts data to JSON file"""
-    return save_accounts(data)
+    save_accounts(data, uid)
+    return True
 
 def update_summary(accounts: List[Dict]) -> AccountsSummary:
     """Update accounts summary information"""
@@ -108,11 +133,15 @@ def is_id_unique(id: str, accounts: List[Dict]) -> bool:
 @chart_of_accounts_bp.route('/create_account', methods=['POST'])
 def create_account():
     """Create a new account"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = request.get_json()
         
         # Load existing accounts to check ID uniqueness
-        accounts_data = load_accounts()
+        accounts_data = load_accounts(uid)
         accounts = accounts_data.get('accounts', [])
         
         # Generate unique ID
@@ -138,7 +167,7 @@ def create_account():
         accounts_data['summary'] = update_summary(accounts).to_dict()
         
         # Save updated data
-        if not save_accounts(accounts_data):
+        if not save_chart_of_accounts(accounts_data, uid):
             return jsonify({'error': 'Failed to save account'}), 500
         
         return jsonify(account_dict), 201
@@ -150,20 +179,22 @@ def create_account():
 @chart_of_accounts_bp.route('/list_accounts', methods=['GET'])
 def list_accounts():
     """Get list of all accounts"""
-    try:
-        accounts_data = load_accounts()
-        return jsonify({
-            'accounts': accounts_data.get('accounts', []),
-            'summary': accounts_data.get('summary', {})
-        }), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    accounts_data = load_accounts(uid)
+    return jsonify(accounts_data)
 
 @chart_of_accounts_bp.route('/get/<account_id>', methods=['GET'])
 def get_account(account_id):
     """Get account by ID"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        data = load_accounts()
+        data = load_accounts(uid)
         accounts = data.get('accounts', [])
         
         account = next((acc for acc in accounts if acc['id'] == account_id), None)
@@ -177,11 +208,15 @@ def get_account(account_id):
 @chart_of_accounts_bp.route('/update/<account_id>', methods=['PATCH'])
 def update_account(account_id):
     """Update an existing account"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         update_data = request.get_json()
         
         # Load existing accounts
-        accounts_data = load_accounts()
+        accounts_data = load_accounts(uid)
         accounts = accounts_data.get('accounts', [])
         
         # Find account to update
@@ -199,7 +234,7 @@ def update_account(account_id):
         # Save changes
         accounts_data['accounts'] = accounts
         accounts_data['summary'] = update_summary(accounts).to_dict()
-        if not save_accounts(accounts_data):
+        if not save_chart_of_accounts(accounts_data, uid):
             return jsonify({'error': 'Failed to save account updates'}), 500
         
         return jsonify(account), 200
@@ -211,9 +246,13 @@ def update_account(account_id):
 @chart_of_accounts_bp.route('/delete_account/<account_id>', methods=['DELETE'])
 def delete_account(account_id):
     """Delete an account"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         # Load data
-        data = load_accounts()
+        data = load_accounts(uid)
         accounts = data.get('accounts', [])
         
         # Find account
@@ -242,7 +281,7 @@ def delete_account(account_id):
         save_accounts({
             'accounts': accounts,
             'summary': summary.to_dict()
-        })
+        }, uid)
         
         return jsonify({
             'message': f'Account {account_id} deleted successfully',
@@ -255,6 +294,10 @@ def delete_account(account_id):
 @chart_of_accounts_bp.route('/account_types', methods=['GET'])
 def get_account_types():
     """Get list of all valid account types"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         from .models import ACCOUNT_TYPE_DETAILS
         account_types = list(ACCOUNT_TYPE_DETAILS.keys())
@@ -265,6 +308,10 @@ def get_account_types():
 @chart_of_accounts_bp.route('/detail-types/<account_type>', methods=['GET'])
 def get_detail_types(account_type):
     """Get valid detail types for a given account type"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     from .models import ACCOUNT_TYPE_DETAILS
     
     try:
@@ -279,8 +326,12 @@ def get_detail_types(account_type):
 @chart_of_accounts_bp.route('/accounts_by_type', methods=['GET'])
 def get_accounts_by_type():
     """Get accounts grouped by their type"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        accounts_data = load_accounts()
+        accounts_data = load_accounts(uid)
         accounts = accounts_data.get('accounts', [])
         
         # Group accounts by type
@@ -312,6 +363,10 @@ def get_accounts_by_type():
 @chart_of_accounts_bp.route('/update-balance/<account_id>', methods=['POST'])
 def update_account_balance(account_id):
     """Update account balance"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = request.get_json()
         if not data or 'amount' not in data or 'type' not in data:
@@ -323,7 +378,7 @@ def update_account_balance(account_id):
         type = data['type']
 
         # Load accounts
-        accounts_data = load_accounts()
+        accounts_data = load_accounts(uid)
         accounts = accounts_data.get('accounts', [])
         
         # Find account
@@ -345,7 +400,7 @@ def update_account_balance(account_id):
             
         # Save changes
         accounts[account_index] = account.to_dict()
-        if not save_accounts({'accounts': accounts}):
+        if not save_accounts({'accounts': accounts}, uid):
             return jsonify({'message': 'Failed to save changes'}), 500
             
         return jsonify(account.to_dict())
@@ -356,6 +411,10 @@ def update_account_balance(account_id):
 @chart_of_accounts_bp.route('/validate-transaction/<account_id>', methods=['POST'])
 def validate_account_transaction(account_id):
     """Validate if a transaction can be applied to an account"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = request.get_json()
         if not data or 'amount' not in data or 'type' not in data:
@@ -367,7 +426,7 @@ def validate_account_transaction(account_id):
         type = data['type']
 
         # Load accounts
-        accounts_data = load_accounts()
+        accounts_data = load_accounts(uid)
         
         # Find account
         account = next(
@@ -399,9 +458,13 @@ def validate_account_transaction(account_id):
 @chart_of_accounts_bp.route('/recalculate-balances', methods=['POST'])
 def recalculate_balances():
     """Recalculate all account balances from transactions"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         # Load chart of accounts
-        chart_data = load_chart_of_accounts()
+        chart_data = load_chart_of_accounts(uid)
         accounts = chart_data.get('accounts', [])
         
         # Reset all balances to 0
@@ -447,6 +510,7 @@ def recalculate_balances():
                             account['currentBalance'] = current_balance + amount
                         else:  # debit
                             account['currentBalance'] = current_balance - amount
+
                         
                     # Update last transaction date
                     account['lastTransactionDate'] = transaction.get('date')

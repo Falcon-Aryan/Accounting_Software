@@ -207,8 +207,12 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { getAuth } from 'firebase/auth'
+import { useRuntimeConfig } from '#app'
 import BaseEditFormModal from '~/components/BaseEditFormModal.vue'
 import BaseButton from './BaseButton.vue'
+
+const config = useRuntimeConfig()
 
 const props = defineProps({
   show: {
@@ -221,7 +225,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'submit', 'update'])
 
 const form = ref({
   first_name: '',
@@ -272,11 +276,29 @@ watch(() => form.value.billing_address, (newVal) => {
   }
 }, { deep: true })
 
-const handleSubmit = () => {
-  emit('submit', {
-    ...form.value,
-    id: props.customer.id,
-    customer_no: props.customer.customer_no
-  })
+const handleSubmit = async () => {
+  try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+
+    const response = await fetch(`${config.public.apiBase}/api/customers/update/${props.customer.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify(form.value)
+    })
+
+    if (response.ok) {
+      const updatedCustomer = await response.json()
+      emit('update', updatedCustomer)
+      emit('close')
+    } else {
+      console.error('Failed to update customer:', await response.text())
+    }
+  } catch (error) {
+    console.error('Error updating customer:', error)
+  }
 }
 </script>

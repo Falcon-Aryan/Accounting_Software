@@ -211,8 +211,12 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { getAuth } from 'firebase/auth'
+import { useRuntimeConfig } from '#app'
 import BaseNewFormModal from '~/components/BaseNewFormModal.vue'
 import BaseButton from './BaseButton.vue'
+
+const config = useRuntimeConfig()
 
 const props = defineProps({
   modelValue: {
@@ -262,8 +266,32 @@ watch(() => form.value.billing_address, (newVal) => {
 
 const errorMessage = ref('')
 
-const handleSubmit = () => {
-  emit('submit', { ...form.value })
+const handleSubmit = async () => {
+  try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+
+    const response = await fetch(`${config.public.apiBase}/api/customers/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify(form.value)
+    })
+
+    if (response.ok) {
+      const newCustomer = await response.json()
+      emit('submit', newCustomer)
+      resetForm()
+    } else {
+      const errorData = await response.text()
+      setError(errorData || 'Failed to create customer')
+    }
+  } catch (error) {
+    console.error('Error creating customer:', error)
+    setError('An error occurred while creating the customer')
+  }
 }
 
 const resetForm = () => {

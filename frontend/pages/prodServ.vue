@@ -168,16 +168,17 @@
 </template>
 
 <script setup>
-definePageMeta({
-  middleware: ['auth']
-})
-
+import { getAuth } from 'firebase/auth'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRuntimeConfig } from '#app'
 import TablePageLayout from '~/components/TablePageLayout.vue'
 import BaseButton from '~/components/BaseButton.vue'
 import NewProdServModal from '~/components/NewProdServModal.vue'
 import EditProdServModal from '~/components/EditProdServModal.vue'
+
+definePageMeta({
+  middleware: ['auth']
+})
 
 const config = useRuntimeConfig()
 const items = ref([])
@@ -211,7 +212,13 @@ const fetchItems = async () => {
   isLoading.value = true
   errorMessage.value = ''
   try {
-    const response = await fetch(`${config.public.apiBase}/api/ProdServ/list`)
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/ProdServ/list_products`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
     if (!response.ok) throw new Error('Failed to fetch items')
     const data = await response.json()
     items.value = data.products
@@ -269,8 +276,13 @@ const deleteItem = async (itemId) => {
   if (!confirm('Are you sure you want to delete this item?')) return
   
   try {
-    const response = await fetch(`${config.public.apiBase}/api/ProdServ/delete/${itemId}`, {
-      method: 'DELETE'
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/ProdServ/delete_product/${itemId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
     })
     
     if (!response.ok) throw new Error('Failed to delete item')
@@ -299,22 +311,25 @@ const closeEditItemModal = () => {
 // Handle update item
 const handleUpdateItem = async (updatedData) => {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/ProdServ/update/${updatedData.id}`, {
-      method: 'PUT',
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/ProdServ/update_product/${updatedData.id}`, {
+      method: 'PATCH',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
       },
       body: JSON.stringify(updatedData)
     })
-    
+
     if (!response.ok) throw new Error('Failed to update item')
-    
+
     const updatedItem = await response.json()
     const index = items.value.findIndex(item => item.id === updatedItem.id)
     if (index !== -1) {
       items.value[index] = updatedItem
     }
-    
+
     closeEditItemModal()
   } catch (error) {
     console.error('Error:', error)
@@ -333,18 +348,21 @@ const closeNewItemModal = () => {
 
 const handleCreateItem = async (itemData) => {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/ProdServ/create`, {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/ProdServ/create_product`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
       },
       body: JSON.stringify(itemData)
     })
-    
+
     if (!response.ok) throw new Error('Failed to create item')
-    
+
     const newItem = await response.json()
-    items.value.push(newItem)
+    items.value = [...items.value, newItem]
     closeNewItemModal()
   } catch (error) {
     console.error('Error:', error)

@@ -226,6 +226,7 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import axios from 'axios'
 import { useRuntimeConfig } from '#app'
+import { getAuth } from 'firebase/auth'
 import BaseNewFormModal from '~/components/BaseNewFormModal.vue'
 
 const config = useRuntimeConfig()
@@ -258,10 +259,16 @@ const inventoryAssetAccounts = ref([])
 // Load accounts on component mount
 onMounted(async () => {
   try {
-    // Get all accounts
-    const accountsResponse = await axios.get(`${config.public.apiBase}/api/coa/list_accounts`)
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+
+    const accountsResponse = await axios.get(`${config.public.apiBase}/api/coa/list_accounts`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
     const accounts = accountsResponse.data.accounts || []
-    
+
     // Filter accounts for service items
     serviceIncomeAccounts.value = accounts.filter(acc => 
       SERVICE_ACCOUNT_TYPES.includes(acc.accountType) && 
@@ -274,7 +281,7 @@ onMounted(async () => {
       acc.active
     )
 
-    // Filter accounts for inventory items - only Sales Revenue and Sales of Product Income
+    // Filter accounts for inventory items
     inventoryIncomeAccounts.value = accounts.filter(acc => 
       acc.active && 
       acc.accountType === 'Income' && 
@@ -282,7 +289,7 @@ onMounted(async () => {
        acc.name.toLowerCase().includes('sales of product income'))
     )
 
-    // Filter Cost of Goods Sold accounts only
+    // Filter Cost of Goods Sold accounts
     cogsAccounts.value = accounts.filter(acc => 
       acc.accountType === 'Cost of Goods Sold' && 
       acc.active

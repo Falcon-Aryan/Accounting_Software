@@ -107,9 +107,12 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { getAuth } from 'firebase/auth'
+import { useRuntimeConfig } from '#app'
 import BaseEditFormModal from '~/components/BaseEditFormModal.vue'
 
+const config = useRuntimeConfig()
 const props = defineProps({
   isOpen: {
     type: Boolean,
@@ -133,7 +136,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'save', 'delete'])
+const emit = defineEmits(['close', 'update', 'delete'])
 
 const form = ref({
   name: '',
@@ -143,6 +146,7 @@ const form = ref({
 })
 
 const isSubmitting = ref(false)
+const errorMessage = ref('')
 
 // Watch for account changes and update form
 watch(() => props.account, (newAccount) => {
@@ -162,22 +166,56 @@ function close() {
 
 async function handleSubmit() {
   try {
-    isSubmitting.value = true
-    await emit('save', { 
-      id: props.account.id,
-      ...form.value 
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+
+    const response = await fetch(`${config.public.apiBase}/api/coa/update_account/${props.account.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify(form.value)
     })
-    if (!props.errorMessage) {
+
+    if (response.ok) {
+      const updatedAccount = await response.json()
+      emit('update', updatedAccount)
       close()
+    } else {
+      const errorData = await response.text()
+      errorMessage.value = errorData || 'Failed to update account'
     }
-  } finally {
-    isSubmitting.value = false
+  } catch (error) {
+    console.error('Error updating account:', error)
+    errorMessage.value = 'An error occurred while updating the account'
   }
 }
 
-function confirmDelete() {
+async function confirmDelete() {
   if (confirm('Are you sure you want to delete this account? This action cannot be undone.')) {
-    emit('delete', props.account.id)
+    try {
+      const auth = getAuth()
+      const idToken = await auth.currentUser?.getIdToken()
+
+      const response = await fetch(`${config.public.apiBase}/api/coa/delete_account/${props.account.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${idToken}`
+        }
+      })
+
+      if (response.ok) {
+        emit('delete', props.account.id)
+        close()
+      } else {
+        const errorData = await response.text()
+        errorMessage.value = errorData || 'Failed to delete account'
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error)
+      errorMessage.value = 'An error occurred while deleting the account'
+    }
   }
 }
 </script>

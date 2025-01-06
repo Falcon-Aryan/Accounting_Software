@@ -210,6 +210,7 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useRuntimeConfig } from '#app'
+import { getAuth } from 'firebase/auth'
 import BaseEditFormModal from '~/components/BaseEditFormModal.vue'
 
 const config = useRuntimeConfig()
@@ -266,11 +267,18 @@ const form = ref({
 // Load accounts on component mount
 onMounted(async () => {
   try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+
     // Get all accounts
-    const accountsResponse = await axios.get(`${config.public.apiBase}/api/coa/list_accounts`)
+    const accountsResponse = await axios.get(`${config.public.apiBase}/api/coa/list_accounts`, {
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      }
+    })
     const accounts = accountsResponse.data.accounts || []
     
-    // Filter income accounts for inventory items - only Sales Revenue and Sales of Product Income
+    // Filter income accounts for inventory items
     incomeAccounts.value = accounts.filter(acc => 
       acc.active && 
       acc.accountType === 'Income' && 
@@ -290,7 +298,7 @@ onMounted(async () => {
       acc.active
     )
 
-    // Filter Cost of Goods Sold accounts only
+    // Filter Cost of Goods Sold accounts
     cogsAccounts.value = accounts.filter(acc => 
       acc.accountType === 'Cost of Goods Sold' && 
       acc.active
@@ -301,6 +309,11 @@ onMounted(async () => {
       acc.detailType === 'Inventory' && 
       acc.active
     )
+
+    // Initialize form with item data
+    if (props.item) {
+      form.value = { ...props.item }
+    }
   } catch (error) {
     console.error('Error loading accounts:', error)
   }
@@ -354,28 +367,43 @@ const showCostPriceError = computed(() => {
          form.value.cost_price >= form.value.unit_price
 })
 
-const handleSubmit = () => {
-  if (form.value.type === 'inventory_item' && showCostPriceError.value) {
-    return // Don't submit if cost price is invalid
-  }
+const handleSubmit = async () => {
+  try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
 
-  const formData = { ...form.value }
-  
-  // Remove inventory info if not an inventory item
-  if (formData.type !== 'inventory_item') {
-    delete formData.inventory_info
-    delete formData.cost_price
+    const formData = { ...form.value }
+    
+    // Remove inventory info if not an inventory item
+    if (formData.type !== 'inventory_item') {
+      delete formData.inventory_info
+    }
+    
+    // Remove account IDs if not enabled
+    if (!formData.sell_enabled) {
+      delete formData.income_account_id
+    }
+    if (!formData.purchase_enabled) {
+      delete formData.expense_account_id
+    }
+    
+    const response = await axios.patch(
+      `${config.public.apiBase}/api/ProdServ/update_product/${formData.id}`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        }
+      }
+    )
+
+    if (response.data) {
+      emit('update', response.data)
+      close()
+    }
+  } catch (error) {
+    console.error('Error updating item:', error)
   }
-  
-  // Remove account IDs if not enabled
-  if (!formData.sell_enabled) {
-    delete formData.income_account_id
-  }
-  if (!formData.purchase_enabled) {
-    delete formData.expense_account_id
-  }
-  
-  emit('update', formData)
-  close()
 }
 </script>

@@ -6,8 +6,8 @@ import os
 import logging
 from datetime import datetime
 from typing import Dict, Optional, List
-from app.transactions.routes import load_transactions
-from app.chart_of_accounts.routes import load_accounts
+from app.transactions import routes as transactions_routes
+from app.chart_of_accounts import routes as chart_of_accounts_routes
 from firebase_admin import auth
 
 # Set up logging
@@ -235,7 +235,7 @@ def create_advanced():
 
 @advanced_bp.route('/update_advanced', methods=['PUT'])
 def update_advanced():
-    """Update advanced settings with validation and migration handling"""
+    """Update advanced settings"""
     uid = get_user_id()
     if not uid:
         return jsonify({'error': 'Unauthorized'}), 401
@@ -247,16 +247,6 @@ def update_advanced():
             
         # Load current settings
         current_settings = load_advanced_data(uid)
-        
-        # Validate critical changes
-        if 'accounting' in data:
-            error = validate_fiscal_year_change(current_settings, data)
-            if error:
-                return jsonify({'error': error}), 400
-                
-            error = validate_accounting_method_change(current_settings, data)
-            if error:
-                return jsonify({'error': error}), 400
         
         # Update settings
         updated_settings = current_settings.copy()
@@ -319,30 +309,8 @@ def get_nested_attribute(data, path):
 
 def validate_fiscal_year_change(current_settings: Dict, new_settings: Dict) -> Optional[str]:
     """Validate fiscal year changes"""
-    if not current_settings.get('accounting'):
-        return None
-        
-    current_fiscal_year = current_settings['accounting'].get('fiscal_year_start')
-    new_fiscal_year = new_settings.get('accounting', {}).get('fiscal_year_start')
-    
-    if current_fiscal_year and new_fiscal_year and current_fiscal_year != new_fiscal_year:
-        # Check if there are any transactions that would be affected
-        transactions = load_transactions()
-        if transactions:
-            return "Cannot change fiscal year start date when transactions exist"
     return None
 
 def validate_accounting_method_change(current_settings: Dict, new_settings: Dict) -> Optional[str]:
     """Validate accounting method changes"""
-    if not current_settings.get('accounting'):
-        return None
-        
-    current_method = current_settings['accounting'].get('accounting_method')
-    new_method = new_settings.get('accounting', {}).get('accounting_method')
-    
-    if current_method and new_method and current_method != new_method:
-        # Check if there are any accounts that would be affected
-        accounts = load_accounts()
-        if accounts:
-            return "Cannot change accounting method when accounts exist"
     return None

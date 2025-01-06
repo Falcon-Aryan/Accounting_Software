@@ -155,6 +155,10 @@
 import { ref, computed } from 'vue'
 import { useRuntimeConfig } from '#imports'
 
+definePageMeta({
+  middleware: ['auth']
+})
+
 const config = useRuntimeConfig()
 
 // State

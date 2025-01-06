@@ -67,7 +67,10 @@ COMPANY_ENUMS = {
 
 # Validation patterns
 PATTERNS = {
-    'tax_id': r'^\d{2}-\d{7}$',
+    'tax_id': {
+        'SSN': r'^\d{3}-\d{2}-\d{4}$',  # Format: XXX-XX-XXXX
+        'EIN': r'^\d{2}-\d{7}$'  # Format: XX-XXXXXXX
+    },
     'email': r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
     'phone': r'^\+?[\d\s-]{10,}$',
     'zip': r'^\d{5}(-\d{4})?$'
@@ -81,9 +84,17 @@ def validate_company_data(data: Dict) -> Optional[str]:
             return "Company name is required"
             
         # Tax ID format
-        tax_id = data.get('company_name_info', {}).get('tax_id')
-        if tax_id and not re.match(PATTERNS['tax_id'], tax_id):
-            return "Tax ID must be in format XX-XXXXXXX"
+        company_name_info = data.get('company_name_info', {})
+        tax_id = company_name_info.get('tax_id')
+        identity_type = company_name_info.get('identity')
+        
+        if tax_id and identity_type:
+            pattern = PATTERNS['tax_id'].get(identity_type)
+            if pattern and not re.match(pattern, tax_id):
+                if identity_type == 'SSN':
+                    return "SSN must be in format XXX-XX-XXXX"
+                else:
+                    return "EIN must be in format XX-XXXXXXX"
             
         # Email format
         email = data.get('contact_info', {}).get('company_email')
@@ -102,10 +113,9 @@ def validate_company_data(data: Dict) -> Optional[str]:
                 return f"Invalid ZIP code format for {address}"
                 
         return None
-        
     except Exception as e:
-        logger.error(f"Validation error: {str(e)}")
-        return f"Validation error: {str(e)}"
+        logger.error(f"Error validating company data: {str(e)}")
+        return str(e)
 
 def load_company_data():
     """Load company data from JSON file"""

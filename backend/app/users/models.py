@@ -19,108 +19,53 @@ class UserModel:
     def _ensure_user_directory(uid: str) -> None:
         """Ensure user directory exists with necessary JSON files"""
         user_dir = os.path.join(UserModel.DATA_DIR, uid)
+        defaults_dir = os.path.join(UserModel.DATA_DIR, 'defaults')
+        
         if not os.path.exists(user_dir):
             os.makedirs(user_dir)
+            current_time = datetime.now().isoformat()
             
-            # Load default accounts and other main JSON files
-            default_accounts_path = os.path.join(UserModel.DATA_DIR, 'default_accounts.json')
-            company_path = os.path.join(UserModel.DATA_DIR, 'defaults', 'company.json')
-            advanced_path = os.path.join(UserModel.DATA_DIR, 'defaults', 'advanced.json')
-            invoices_path = os.path.join(UserModel.DATA_DIR, 'defaults', 'invoices.json')
-            customers_path = os.path.join(UserModel.DATA_DIR, 'defaults', 'customers.json')
-            products_path = os.path.join(UserModel.DATA_DIR, 'defaults', 'products.json')
-            estimates_path = os.path.join(UserModel.DATA_DIR, 'defaults', 'estimates.json')
-            transactions_path = os.path.join(UserModel.DATA_DIR, 'defaults', 'transactions.json')
-            
-            # Load all main JSON files
+            # First, load the default accounts
+            default_accounts_path = os.path.join(defaults_dir, 'default_accounts.json')
             with open(default_accounts_path, 'r') as f:
                 default_accounts = json.load(f)
-            with open(company_path, 'r') as f:
-                company_data = json.load(f)
-            with open(advanced_path, 'r') as f:
-                advanced_data = json.load(f)
-            with open(invoices_path, 'r') as f:
-                invoices_data = json.load(f)
-            with open(customers_path, 'r') as f:
-                customers_data = json.load(f)
-            with open(products_path, 'r') as f:
-                products_data = json.load(f)
-            with open(estimates_path, 'r') as f:
-                estimates_data = json.load(f)
-            with open(transactions_path, 'r') as f:
-                transactions_data = json.load(f)
             
-            # Update timestamps in the loaded data
-            current_time = datetime.now().isoformat()
-
-            # Create JSON files directly in the user directory
-            files_to_create = {
-                'invoices.json': {
-                    **invoices_data,
-                    'metadata': {
-                        **invoices_data.get('metadata', {}),
-                        'lastUpdated': current_time
-                    }
-                },
-                'customers.json': {
-                    **customers_data,
-                    'metadata': {
-                        **customers_data.get('metadata', {}),
-                        'lastUpdated': current_time
-                    }
-                },
-                'products.json': {
-                    **products_data,
-                    'metadata': {
-                        **products_data.get('metadata', {}),
-                        'lastUpdated': current_time
-                    }
-                },
-                'estimates.json': {
-                    **estimates_data,
-                    'metadata': {
-                        **estimates_data.get('metadata', {}),
-                        'lastUpdated': current_time
-                    }
-                },
-                'company.json': {
-                    **company_data,
-                    'metadata': {
-                        **company_data.get('metadata', {}),
-                        'lastUpdated': current_time,
-                        'createdAt': current_time
-                    }
-                },
-                'advanced.json': {
-                    **advanced_data,
-                    'metadata': {
-                        **advanced_data.get('metadata', {}),
-                        'lastUpdated': current_time
-                    }
-                },
-                'chart_of_accounts.json': {
-                    'accounts': default_accounts['accounts'],
-                    'metadata': {
-                        'lastUpdated': current_time,
-                        'fiscalYear': datetime.now().year
-                    },
-                    'summary': default_accounts['summary']
-                },
-                'transactions.json': {
-                    **transactions_data,
-                    'metadata': {
-                        **transactions_data.get('metadata', {}),
-                        'lastUpdated': current_time
-                    }
-                }
-            }
-
-            # Write all files directly to the user directory
-            for filename, content in files_to_create.items():
-                file_path = os.path.join(user_dir, filename)
-                with open(file_path, 'w') as f:
-                    json.dump(content, f, indent=2)
-
+            # Copy all files from defaults directory
+            for filename in os.listdir(defaults_dir):
+                if filename == 'default_accounts.json':
+                    continue  # Skip default_accounts.json
+                    
+                default_file = os.path.join(defaults_dir, filename)
+                user_file = os.path.join(user_dir, filename)
+                
+                try:
+                    with open(default_file, 'r') as f:
+                        content = json.load(f)
+                        
+                    # Add metadata with timestamps
+                    if isinstance(content, dict):
+                        content.setdefault('metadata', {})
+                        content['metadata'].update({
+                            'lastUpdated': current_time,
+                            'createdAt': current_time
+                        })
+                        
+                        # For chart_of_accounts.json, populate with default accounts
+                        if filename == 'chart_of_accounts.json':
+                            content['metadata']['fiscalYear'] = datetime.now().year
+                            content['accounts'] = default_accounts['accounts']
+                            if 'summary' in default_accounts:
+                                content['summary'] = default_accounts['summary']
+                    
+                    with open(user_file, 'w') as f:
+                        json.dump(content, f, indent=2)
+                        
+                except Exception as e:
+                    print(f"Error copying {filename} for user {uid}: {str(e)}")
+                    continue
+            
+            # No need to create accounts.json with empty structure
+            
     @staticmethod
     def create_user(email: str, password: str) -> Dict:
         """Create a new user in Firebase"""
@@ -137,9 +82,6 @@ class UserModel:
                 'createdAt': UserModel._format_timestamp(user.user_metadata.creation_timestamp),
                 'lastLogin': UserModel._format_timestamp(user.user_metadata.last_sign_in_timestamp)
             }
-            
-            # Create user directory
-            UserModel._ensure_user_directory(user.uid)
             
             return user_data
         except Exception as e:
@@ -187,6 +129,17 @@ class UserModel:
                 del users_data['users'][uid]
                 
                 # Remove their data directory if it exists
+                user_dir = os.path.join(UserModel.DATA_DIR, uid)
+                if os.path.exists(user_dir):
+                    import shutil
+                    shutil.rmtree(user_dir)
+            
+            # Also remove any orphaned user directories that aren't in Firebase
+            all_user_dirs = {d for d in os.listdir(UserModel.DATA_DIR) 
+                           if os.path.isdir(os.path.join(UserModel.DATA_DIR, d)) 
+                           and d != 'users' and d != 'defaults'}
+            orphaned_dirs = all_user_dirs - firebase_uids
+            for uid in orphaned_dirs:
                 user_dir = os.path.join(UserModel.DATA_DIR, uid)
                 if os.path.exists(user_dir):
                     import shutil

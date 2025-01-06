@@ -218,7 +218,9 @@
 import { ref, computed } from 'vue'
 import { useRuntimeConfig } from '#imports'
 
-const config = useRuntimeConfig()
+definePageMeta({
+  middleware: ['auth']
+})
 
 // State
 const bills = ref([])

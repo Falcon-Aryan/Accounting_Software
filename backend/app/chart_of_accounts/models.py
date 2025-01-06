@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import os
 
@@ -320,6 +320,12 @@ class AccountsSummary:
     inactiveAccounts: int = 0
     totalDebit: float = 0.0
     totalCredit: float = 0.0
+    total_assets: float = 0.0
+    total_liabilities: float = 0.0
+    total_equity: float = 0.0
+    total_income: float = 0.0
+    total_expense: float = 0.0
+    last_updated: Optional[datetime] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AccountsSummary':
@@ -329,7 +335,13 @@ class AccountsSummary:
             activeAccounts=data.get('activeAccounts', 0),
             inactiveAccounts=data.get('inactiveAccounts', 0),
             totalDebit=data.get('totalDebit', 0.0),
-            totalCredit=data.get('totalCredit', 0.0)
+            totalCredit=data.get('totalCredit', 0.0),
+            total_assets=data.get('total_assets', 0.0),
+            total_liabilities=data.get('total_liabilities', 0.0),
+            total_equity=data.get('total_equity', 0.0),
+            total_income=data.get('total_income', 0.0),
+            total_expense=data.get('total_expense', 0.0),
+            last_updated=datetime.fromisoformat(data['last_updated']) if data.get('last_updated') else None
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -339,5 +351,39 @@ class AccountsSummary:
             'activeAccounts': self.activeAccounts,
             'inactiveAccounts': self.inactiveAccounts,
             'totalDebit': self.totalDebit,
-            'totalCredit': self.totalCredit
+            'totalCredit': self.totalCredit,
+            'total_assets': self.total_assets,
+            'total_liabilities': self.total_liabilities,
+            'total_equity': self.total_equity,
+            'total_income': self.total_income,
+            'total_expense': self.total_expense,
+            'last_updated': self.last_updated.isoformat() if self.last_updated else None
         }
+
+    @classmethod
+    def calculate_from_accounts(cls, accounts: List[Account]) -> 'AccountsSummary':
+        """Calculate summary from a list of accounts"""
+        summary = cls()
+        summary.totalAccounts = len(accounts)
+        summary.activeAccounts = sum(1 for acc in accounts if acc.active)
+        summary.inactiveAccounts = summary.totalAccounts - summary.activeAccounts
+        
+        for account in accounts:
+            if account.normalBalanceType == 'debit':
+                summary.totalDebit += account.currentBalance
+            else:
+                summary.totalCredit += account.currentBalance
+                
+            if account.accountType == 'Asset':
+                summary.total_assets += account.currentBalance
+            elif account.accountType == 'Liability':
+                summary.total_liabilities += account.currentBalance
+            elif account.accountType == 'Equity':
+                summary.total_equity += account.currentBalance
+            elif account.accountType == 'Income':
+                summary.total_income += account.currentBalance
+            elif account.accountType == 'Expense':
+                summary.total_expense += account.currentBalance
+        
+        summary.last_updated = datetime.utcnow()
+        return summary

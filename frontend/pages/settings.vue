@@ -803,6 +803,27 @@ onMounted(async () => {
   }
 })
 
+// Watch for tax ID changes to auto-format
+watch(() => companyData.value.company_name_info.tax_id, (newVal) => {
+  if (!newVal) return
+  const digits = newVal.replace(/\D/g, '')
+  if (companyData.value.company_name_info.identity === 'SSN') {
+    if (digits.length <= 3) {
+      companyData.value.company_name_info.tax_id = digits
+    } else if (digits.length <= 5) {
+      companyData.value.company_name_info.tax_id = `${digits.slice(0,3)}-${digits.slice(3)}`
+    } else {
+      companyData.value.company_name_info.tax_id = `${digits.slice(0,3)}-${digits.slice(3,5)}-${digits.slice(5,9)}`
+    }
+  } else if (companyData.value.company_name_info.identity === 'EIN') {
+    if (digits.length <= 2) {
+      companyData.value.company_name_info.tax_id = digits
+    } else {
+      companyData.value.company_name_info.tax_id = `${digits.slice(0,2)}-${digits.slice(2,9)}`
+    }
+  }
+})
+
 // Auto-save when company settings change
 watch(companyData, debounce(async () => {
   if (!isLoading.value && !isSaving.value) {

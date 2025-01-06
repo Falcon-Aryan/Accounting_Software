@@ -58,13 +58,13 @@ export const useFirebaseAuth = () => {
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.message || 'Failed to create user')
+        throw new Error(data.error || 'Failed to create user')
       }
 
       const data = await response.json()
-      user.value = data.user
+      user.value = data
 
-      // Sync user data after successful creation
+      // Sync all Firebase users with our local storage
       await fetch(`${config.public.apiBase}/api/users/sync`, {
         method: 'POST',
         headers: {

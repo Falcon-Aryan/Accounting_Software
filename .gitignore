@@ -38,9 +38,17 @@ yarn-error.log*
 *.swo
 .DS_Store
 
+# Nuxt.js
+.nuxt/
+.output/
+dist/
+
 # Project specific
-backend/data/*.json
-!backend/data/chart_of_accounts.json
-!backend/data/default_accounts.json
-# Firebase service account key
+backend/data/[0-9A-Za-z]*/  # This will ignore UID folders but keep defaults
 backend/config/serviceAccountKey.json
+backend/.env
+frontend/.env
+
+# Logs
+*.log
+logs/

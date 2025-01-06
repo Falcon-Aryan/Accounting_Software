@@ -12,9 +12,12 @@ def create_user():
         if not email or not password:
             return jsonify({'error': 'Email and password are required'}), 400
 
+        # Create user in Firebase
         user = UserModel.create_user(email, password)
+        
         # Sync the new user with our users.json
-        UserModel.sync_firebase_user(user['uid'])
+        user = UserModel.sync_firebase_user(user['uid'])
+        
         return jsonify(user), 201
         
     except Exception as e:

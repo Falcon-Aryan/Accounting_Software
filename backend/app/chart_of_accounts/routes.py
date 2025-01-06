@@ -112,12 +112,49 @@ def update_summary(accounts: List[Dict]) -> AccountsSummary:
         if acc.get('normalBalanceType') == 'credit' and acc.get('active', True)
     )
     
+    # Calculate totals by account type
+    total_assets = sum(
+        acc.get('currentBalance', 0)
+        for acc in accounts
+        if acc.get('accountType') == 'Asset' and acc.get('active', True)
+    )
+    
+    total_liabilities = sum(
+        acc.get('currentBalance', 0)
+        for acc in accounts
+        if acc.get('accountType') == 'Liability' and acc.get('active', True)
+    )
+    
+    total_equity = sum(
+        acc.get('currentBalance', 0)
+        for acc in accounts
+        if acc.get('accountType') == 'Equity' and acc.get('active', True)
+    )
+    
+    total_income = sum(
+        acc.get('currentBalance', 0)
+        for acc in accounts
+        if acc.get('accountType') == 'Income' and acc.get('active', True)
+    )
+    
+    total_expense = sum(
+        acc.get('currentBalance', 0)
+        for acc in accounts
+        if acc.get('accountType') == 'Expense' and acc.get('active', True)
+    )
+    
     return AccountsSummary(
         totalAccounts=total,
         activeAccounts=active,
         inactiveAccounts=inactive,
         totalDebit=total_debit,
-        totalCredit=total_credit
+        totalCredit=total_credit,
+        total_assets=total_assets,
+        total_liabilities=total_liabilities,
+        total_equity=total_equity,
+        total_income=total_income,
+        total_expense=total_expense,
+        last_updated=datetime.utcnow()
     )
 
 def generate_account_id() -> str:

@@ -186,6 +186,10 @@ import BaseButton from '../components/BaseButton.vue'
 import NewAccountModal from '../components/NewAccountModal.vue'
 import EditAccountModal from '../components/EditAccountModal.vue'
 
+definePageMeta({
+  middleware: ['auth']
+})
+
 // Account types from backend ACCOUNT_TYPE_DETAILS
 const accountTypes = [
   'Bank',

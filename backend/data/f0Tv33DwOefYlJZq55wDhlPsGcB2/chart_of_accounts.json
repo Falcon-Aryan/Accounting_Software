@@ -9,8 +9,8 @@
       "openingBalance": 0.0,
       "active": true,
       "isDefault": true,
-      "currentBalance": 0.0,
-      "lastTransactionDate": null,
+      "currentBalance": 5000.0,
+      "lastTransactionDate": "2025-01-07",
       "normalBalanceType": "debit"
     },
     {
@@ -74,8 +74,8 @@
       "openingBalance": 0.0,
       "active": true,
       "isDefault": true,
-      "currentBalance": 0.0,
-      "lastTransactionDate": null,
+      "currentBalance": 1000.0,
+      "lastTransactionDate": "2025-01-07",
       "normalBalanceType": "debit"
     },
     {
@@ -100,8 +100,8 @@
       "openingBalance": 0.0,
       "active": true,
       "isDefault": true,
-      "currentBalance": 0.0,
-      "lastTransactionDate": null,
+      "currentBalance": 1000.0,
+      "lastTransactionDate": "2025-01-07",
       "normalBalanceType": "credit"
     },
     {
@@ -113,8 +113,8 @@
       "openingBalance": 0.0,
       "active": true,
       "isDefault": true,
-      "currentBalance": 0.0,
-      "lastTransactionDate": null,
+      "currentBalance": 5000.0,
+      "lastTransactionDate": "2025-01-07",
       "normalBalanceType": "credit"
     },
     {
@@ -236,16 +236,17 @@
     }
   ],
   "summary": {
-    "totalAccounts": 18,
-    "activeAccounts": 18,
-    "inactiveAccounts": 0,
-    "totalDebit": 0.0,
-    "totalCredit": 0.0,
-    "total_assets": 0.0,
-    "total_liabilities": 0.0,
-    "total_equity": 0.0,
+    "total_assets": 6000.0,
+    "total_liabilities": 1000.0,
+    "total_equity": 5000.0,
     "total_income": 0.0,
     "total_expense": 0.0,
-    "last_updated": null
+    "net_income": 0.0,
+    "last_updated": "2025-01-07T18:50:48.413398"
+  },
+  "metadata": {
+    "lastUpdated": "2025-01-07T11:47:46.431394",
+    "createdAt": "2025-01-07T11:47:46.431394",
+    "fiscalYear": 2025
   }
 }

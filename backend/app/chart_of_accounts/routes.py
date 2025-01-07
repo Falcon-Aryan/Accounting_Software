@@ -504,15 +504,20 @@ def recalculate_balances():
         chart_data = load_chart_of_accounts(uid)
         accounts = chart_data.get('accounts', [])
         
-        # Reset all balances to 0
+        # Reset all balances to opening balance
         for account in accounts:
-            account['currentBalance'] = 0
+            account['currentBalance'] = account.get('openingBalance', 0.0)
             account['lastTransactionDate'] = None
             
         # Load transactions
-        with open(os.path.join(DATA_DIR, 'transactions.json'), 'r') as f:
-            transactions_data = json.load(f)
-            transactions = transactions_data.get('transactions', [])
+        transactions_file = os.path.join(DATA_DIR, uid, 'transactions.json')
+        if not os.path.exists(transactions_file):
+            transactions_data = {'transactions': []}
+        else:
+            with open(transactions_file, 'r') as f:
+                transactions_data = json.load(f)
+                
+        transactions = transactions_data.get('transactions', [])
             
         # Process only posted transactions
         posted_transactions = [t for t in transactions if t.get('status') == 'posted']
@@ -547,31 +552,75 @@ def recalculate_balances():
                             account['currentBalance'] = current_balance + amount
                         else:  # debit
                             account['currentBalance'] = current_balance - amount
-
-                        
+                            
                     # Update last transaction date
                     account['lastTransactionDate'] = transaction.get('date')
         
+        # Calculate totals
+        total_assets = 0
+        total_liabilities = 0
+        total_equity = 0
+        total_income = 0
+        total_expense = 0
+        
+        for account in accounts:
+            account_type = account.get('accountType', '')
+            balance = float(account.get('currentBalance', 0))
+            
+            if account_type in ['Bank', 'Other Current Asset', 'Fixed Asset', 'Accounts Receivable']:
+                total_assets += balance
+            elif account_type in ['Credit Card', 'Accounts Payable', 'Other Current Liability', 'Long Term Liability']:
+                total_liabilities += balance
+            elif account_type == 'Equity':
+                total_equity += balance
+            elif account_type in ['Income', 'Other Income']:
+                total_income += balance
+            elif account_type in ['Cost of Goods Sold', 'Expense', 'Other Expense']:
+                total_expense += balance
+        
         # Update summary
-        summary = {
-            'total_assets': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType', '').startswith('Bank') or acc.get('accountType') == 'Accounts Receivable'),
-            'total_liabilities': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType') == 'Accounts payable'),
-            'total_equity': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType', '').startswith('Equity')),
-            'total_income': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType') == 'Income'),
-            'total_expense': sum(acc.get('currentBalance', 0) for acc in accounts if acc.get('accountType') == 'Expense'),
+        chart_data['summary'] = {
+            'total_assets': total_assets,
+            'total_liabilities': total_liabilities,
+            'total_equity': total_equity,
+            'total_income': total_income,
+            'total_expense': total_expense,
+            'net_income': total_income - total_expense,
             'last_updated': datetime.utcnow().isoformat()
         }
         
-        chart_data['summary'] = summary
-        
         # Save updated chart of accounts
-        with open(os.path.join(DATA_DIR, 'chart_of_accounts.json'), 'w') as f:
-            json.dump(chart_data, f, indent=2)
+        save_chart_of_accounts(chart_data, uid)
             
         return jsonify({
             'message': 'Account balances recalculated successfully',
-            'summary': summary
+            'summary': chart_data['summary']
         }), 200
         
     except Exception as e:
         return jsonify({'message': f'Error recalculating balances: {str(e)}'}), 500
+
+@chart_of_accounts_bp.route('/normal_balance_types', methods=['GET'])
+def get_normal_balance_types():
+    """Get normal balance types for all account types"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = load_chart_of_accounts(uid)
+        account_types = {}
+        
+        # Build a mapping of accountType to normalBalanceType
+        for account in data['accounts']:
+            account_type = account['accountType']
+            normal_balance = account['normalBalanceType']
+            if account_type not in account_types:
+                account_types[account_type] = normal_balance
+
+        return jsonify({
+            'normal_balance_types': account_types
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

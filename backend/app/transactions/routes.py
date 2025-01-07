@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Optional
 from datetime import datetime
 import random
+from firebase_admin import auth
 
 from . import transactions_bp
 from .models import Transaction, TransactionEntry, TransactionType
@@ -11,68 +12,87 @@ from .models import Transaction, TransactionEntry, TransactionType
 # File paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-TRANSACTIONS_FILE = os.path.join(DATA_DIR, 'transactions.json')
 CHART_OF_ACCOUNTS_FILE = os.path.join(DATA_DIR, 'chart_of_accounts.json')
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
+def get_user_id():
+    """Get the user ID from the Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split('Bearer ')[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except:
+        return None
+
 def get_default_accounts() -> Dict[str, str]:
     """Get default account IDs from chart of accounts"""
     try:
-        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+        uid = get_user_id()
+        if not uid:
+            return {
+                'accounts_receivable': '1100-0001',  # Fallback Accounts Receivable
+                'sales_revenue': '4000-0001',        # Fallback Sales Revenue
+                'cogs': '5000-0001',                 # Fallback COGS
+                'inventory_asset': '1200-0001'       # Fallback Inventory Asset
+            }
+
+        file_path = os.path.join(DATA_DIR, uid, 'chart_of_accounts.json')
+        if not os.path.exists(file_path):
+            return {
+                'accounts_receivable': '1100-0001',  # Fallback Accounts Receivable
+                'sales_revenue': '4000-0001',        # Fallback Sales Revenue
+                'cogs': '5000-0001',                 # Fallback COGS
+                'inventory_asset': '1200-0001'       # Fallback Inventory Asset
+            }
+
+        with open(file_path, 'r') as f:
             chart_data = json.load(f)
             accounts = chart_data.get('accounts', [])
             
-            # Find Accounts Receivable account
+            # Find default accounts
             accounts_receivable = next(
                 (acc['id'] for acc in accounts 
                 if acc['accountType'] == 'Accounts Receivable' 
-                and acc['isDefault'] 
-                and acc['active']),
-                None
+                and acc['isDefault']), 
+                '1100-0001'  # Fallback Accounts Receivable
             )
             
-            # Find Sales Revenue account
             sales_revenue = next(
                 (acc['id'] for acc in accounts 
-                if acc['accountType'] == 'Income'
-                and acc['name'] == 'Sales Revenue'
-                and acc['isDefault'] 
-                and acc['active']),
-                None
+                if acc['accountType'] == 'Income' 
+                and acc['isDefault']), 
+                '4000-0001'  # Fallback Sales Revenue
             )
             
-            # Find COGS account
             cogs = next(
                 (acc['id'] for acc in accounts 
-                if acc['accountType'] == 'Cost of Goods Sold'
-                and acc['isDefault'] 
-                and acc['active']),
-                None
+                if acc['accountType'] == 'Cost of Goods Sold' 
+                and acc['isDefault']), 
+                '5000-0001'  # Fallback COGS
             )
             
-            # Find Inventory Asset account
             inventory_asset = next(
                 (acc['id'] for acc in accounts 
-                if acc['accountType'] == 'Other Current Asset'
-                and acc['detailType'] == 'Inventory'
-                and acc['isDefault'] 
-                and acc['active']),
-                None
+                if acc['accountType'] == 'Other Current Asset' 
+                and acc['detailType'] == 'Inventory' 
+                and acc['isDefault']), 
+                '1200-0001'  # Fallback Inventory Asset
             )
             
-            if not accounts_receivable or not sales_revenue or not cogs or not inventory_asset:
-                raise Exception("Required default accounts not found in chart of accounts")
-                
             return {
                 'accounts_receivable': accounts_receivable,
                 'sales_revenue': sales_revenue,
                 'cogs': cogs,
                 'inventory_asset': inventory_asset
             }
+            
     except Exception as e:
-        print(f"Error loading default accounts: {str(e)}")
+        print(f"Error getting default accounts: {str(e)}")
         return {
             'accounts_receivable': '1100-0001',  # Fallback Accounts Receivable
             'sales_revenue': '4000-0001',        # Fallback Sales Revenue
@@ -80,38 +100,39 @@ def get_default_accounts() -> Dict[str, str]:
             'inventory_asset': '1200-0001'       # Fallback Inventory Asset
         }
 
-# Get default accounts
-DEFAULT_ACCOUNTS = get_default_accounts()
-
 def generate_transaction_id() -> str:
     """Generate a random transaction ID"""
-    return f"TXN-{random.randint(10000, 99999)}"
+    first_half = str(random.randint(1000, 9999))
+    second_half = str(random.randint(1000, 9999))
+    return f"{first_half}-{second_half}"
 
 def load_transactions() -> Dict:
     """Load transactions data from JSON file"""
-    try:
-        if os.path.exists(TRANSACTIONS_FILE):
-            with open(TRANSACTIONS_FILE, 'r') as f:
-                return json.load(f)
-    except Exception as e:
-        print(f"Error loading transactions data: {str(e)}")
-    return {'transactions': []}
+    uid = get_user_id()
+    if not uid:
+        return {'transactions': []}
+    return Transaction.load_user_transactions(uid)
 
 def save_transactions(data: Dict) -> bool:
     """Save transactions data to JSON file"""
-    try:
-        with open(TRANSACTIONS_FILE, 'w') as f:
-            json.dump(data, f, indent=2)
-        return True
-    except Exception as e:
-        print(f"Error saving transactions data: {str(e)}")
+    uid = get_user_id()
+    if not uid:
         return False
+    return Transaction.save_user_transactions(uid, data)
 
-def create_transaction_direct(transaction_data: dict):
+def create_transaction_direct(transaction_data: dict) -> Optional[Dict]:
     """Create a new transaction directly from code (not via HTTP)"""
     try:
+        uid = get_user_id()
+        if not uid:
+            return None
+
         # Load chart of accounts to get account names
-        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+        file_path = os.path.join(DATA_DIR, uid, 'chart_of_accounts.json')
+        if not os.path.exists(file_path):
+            return None
+
+        with open(file_path, 'r') as f:
             chart_data = json.load(f)
             accounts_map = {acc['id']: acc['name'] for acc in chart_data.get('accounts', [])}
 
@@ -146,7 +167,7 @@ def create_transaction_direct(transaction_data: dict):
             cost_amount = 0.0
             if product_type == 'inventory_item':
                 # Load products data to get cost price
-                with open(os.path.join(DATA_DIR, 'products.json'), 'r') as f:
+                with open(os.path.join(DATA_DIR, uid, 'products.json'), 'r') as f:
                     products_data = json.load(f)
                     products_map = {p['id']: p for p in products_data.get('products', [])}
                     
@@ -162,16 +183,16 @@ def create_transaction_direct(transaction_data: dict):
             # Revenue entries (common for both types)
             entries.extend([
                 {
-                    'accountId': DEFAULT_ACCOUNTS['accounts_receivable'],
+                    'accountId': get_default_accounts()['accounts_receivable'],
                     'amount': amount,
                     'type': 'debit',
-                    'description': f"{description} - Revenue ({accounts_map.get(DEFAULT_ACCOUNTS['accounts_receivable'], 'Accounts Receivable')})"
+                    'description': f"{description} - Revenue ({accounts_map.get(get_default_accounts()['accounts_receivable'], 'Accounts Receivable')})"
                 },
                 {
-                    'accountId': DEFAULT_ACCOUNTS['sales_revenue'],
+                    'accountId': get_default_accounts()['sales_revenue'],
                     'amount': amount,
                     'type': 'credit',
-                    'description': f"{description} - Revenue ({accounts_map.get(DEFAULT_ACCOUNTS['sales_revenue'], 'Sales Revenue')})"
+                    'description': f"{description} - Revenue ({accounts_map.get(get_default_accounts()['sales_revenue'], 'Sales Revenue')})"
                 }
             ])
             
@@ -179,16 +200,16 @@ def create_transaction_direct(transaction_data: dict):
             if product_type == 'inventory_item' and cost_amount > 0:
                 entries.extend([
                     {
-                        'accountId': DEFAULT_ACCOUNTS['cogs'],
+                        'accountId': get_default_accounts()['cogs'],
                         'amount': cost_amount,
                         'type': 'debit',
-                        'description': f"{description} - Cost of Goods Sold ({accounts_map.get(DEFAULT_ACCOUNTS['cogs'], 'Cost of Goods Sold')})"
+                        'description': f"{description} - Cost of Goods Sold ({accounts_map.get(get_default_accounts()['cogs'], 'Cost of Goods Sold')})"
                     },
                     {
-                        'accountId': DEFAULT_ACCOUNTS['inventory_asset'],
+                        'accountId': get_default_accounts()['inventory_asset'],
                         'amount': cost_amount,
                         'type': 'credit',
-                        'description': f"{description} - Inventory Reduction ({accounts_map.get(DEFAULT_ACCOUNTS['inventory_asset'], 'Inventory Asset')})"
+                        'description': f"{description} - Inventory Reduction ({accounts_map.get(get_default_accounts()['inventory_asset'], 'Inventory Asset')})"
                     }
                 ])
             
@@ -226,7 +247,15 @@ def create_transaction_direct(transaction_data: dict):
 def validate_transaction_accounts(transaction_type: str, sub_type: str, entries: List[Dict]) -> tuple[bool, str]:
     """Validate if the accounts used in the transaction are appropriate for the transaction type"""
     try:
-        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+        uid = get_user_id()
+        if not uid:
+            return False, "User ID not found"
+        
+        file_path = os.path.join(DATA_DIR, uid, 'chart_of_accounts.json')
+        if not os.path.exists(file_path):
+            return False, "Chart of accounts not found"
+        
+        with open(file_path, 'r') as f:
             chart_data = json.load(f)
             accounts = {acc['id']: acc for acc in chart_data.get('accounts', [])}
         
@@ -252,32 +281,75 @@ def validate_transaction_accounts(transaction_type: str, sub_type: str, entries:
 
 def get_valid_account_types(transaction_type: str, sub_type: str) -> List[str]:
     """Get valid account types for a transaction type"""
+    # All possible account types
+    asset_accounts = ['Bank', 'Other Current Asset', 'Fixed Asset', 'Accounts Receivable']
+    liability_accounts = ['Credit Card', 'Accounts Payable', 'Other Current Liability', 'Long Term Liability']
+    equity_accounts = ['Equity']
+    income_accounts = ['Income', 'Other Income']
+    expense_accounts = ['Expense', 'Other Expense', 'Cost of Goods Sold']
+    
+    # Define valid combinations based on accounting principles
     valid_types = {
-        'sale': ['Accounts Receivable', 'Income', 'Bank', 'Other Current Asset'],
-        'purchase': ['Accounts Payable', 'Other Current Asset', 'Expense', 'Bank'],
-        'payment_received': ['Bank', 'Accounts Receivable'],
-        'payment_made': ['Bank', 'Accounts Payable'],
-        'expense': ['Expense', 'Bank', 'Credit Card'],
-        'transfer': ['Bank', 'Other Current Asset'],
-        'adjustment': ['Other Current Asset', 'Income', 'Expense']
+        'sale': [
+            *asset_accounts,      # For receiving payment or recording receivables
+            *income_accounts      # For recording revenue
+        ],
+        'purchase': [
+            *asset_accounts,      # For paying or recording assets purchased
+            *liability_accounts,  # For recording payment method or payables
+            *expense_accounts     # For recording expenses
+        ],
+        'payment_received': [
+            *asset_accounts,      # For recording where payment is received
+            'Accounts Receivable' # For clearing the receivable
+        ],
+        'payment_made': [
+            *asset_accounts,      # For recording payment from bank/cash
+            *liability_accounts   # For clearing the payable
+        ],
+        'expense': [
+            *asset_accounts,      # For recording payment method
+            *liability_accounts,  # For recording payment method
+            *expense_accounts     # For recording the expense
+        ],
+        'equity': [
+            *asset_accounts,      # For recording cash/bank accounts
+            *liability_accounts,  # For recording credit accounts
+            *equity_accounts      # For recording owner's equity
+        ],
+        'transfer': [
+            *asset_accounts,      # For transfers between asset accounts
+            *liability_accounts   # For transfers between liability accounts
+        ],
+        'adjustment': [
+            *asset_accounts,      # For adjusting asset values
+            *liability_accounts,  # For adjusting liability values
+            *equity_accounts,     # For adjusting equity
+            *income_accounts,     # For adjusting income
+            *expense_accounts     # For adjusting expenses
+        ]
     }
-    return valid_types.get(transaction_type, [])
+    
+    return list(set(valid_types.get(transaction_type, [])))  # Remove any duplicates
 
 def update_account_balances(transaction: Transaction) -> tuple[bool, Optional[str]]:
     """Update account balances in the chart of accounts when posting a transaction"""
     try:
+        uid = get_user_id()
+        if not uid:
+            return False, "User ID not found"
+        
+        file_path = os.path.join(DATA_DIR, uid, 'chart_of_accounts.json')
+        if not os.path.exists(file_path):
+            return False, "Chart of accounts not found"
+        
         # Load chart of accounts
-        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+        with open(file_path, 'r') as f:
             chart_data = json.load(f)
             accounts = chart_data.get('accounts', [])
             
         # Track which accounts were updated
         updated_accounts = set()
-        total_assets = 0
-        total_liabilities = 0
-        total_equity = 0
-        total_income = 0
-        total_expense = 0
         
         # Update each account's balance based on transaction entries
         for entry in transaction.entries:
@@ -322,19 +394,26 @@ def update_account_balances(transaction: Transaction) -> tuple[bool, Optional[st
             # Mark account as updated
             updated_accounts.add(account['id'])
             
-            # Update totals based on account type
+        # Calculate totals by summing all account balances
+        total_assets = 0
+        total_liabilities = 0
+        total_equity = 0
+        total_income = 0
+        total_expense = 0
+        
+        for account in accounts:
             account_type = account.get('accountType', '')
             balance = float(account.get('currentBalance', 0))
             
-            if account_type in ['Bank', 'Other Current Asset', 'Fixed Asset']:
+            if account_type in ['Bank', 'Other Current Asset', 'Fixed Asset', 'Accounts Receivable']:
                 total_assets += balance
             elif account_type in ['Credit Card', 'Accounts Payable', 'Other Current Liability', 'Long Term Liability']:
                 total_liabilities += balance
             elif account_type == 'Equity':
                 total_equity += balance
-            elif account_type == 'Income':
+            elif account_type in ['Income', 'Other Income']:
                 total_income += balance
-            elif account_type in ['Cost of Goods Sold', 'Expense']:
+            elif account_type in ['Cost of Goods Sold', 'Expense', 'Other Expense']:
                 total_expense += balance
         
         # Update summary
@@ -344,11 +423,12 @@ def update_account_balances(transaction: Transaction) -> tuple[bool, Optional[st
             'total_equity': total_equity,
             'total_income': total_income,
             'total_expense': total_expense,
+            'net_income': total_income - total_expense,
             'last_updated': datetime.utcnow().isoformat()
         }
         
         # Save changes
-        with open(CHART_OF_ACCOUNTS_FILE, 'w') as f:
+        with open(file_path, 'w') as f:
             json.dump(chart_data, f, indent=2)
             
         return True, None
@@ -359,8 +439,16 @@ def update_account_balances(transaction: Transaction) -> tuple[bool, Optional[st
 def reverse_account_balances(transaction: Transaction) -> tuple[bool, Optional[str]]:
     """Reverse account balances in the chart of accounts when voiding a transaction"""
     try:
+        uid = get_user_id()
+        if not uid:
+            return False, "User ID not found"
+        
+        file_path = os.path.join(DATA_DIR, uid, 'chart_of_accounts.json')
+        if not os.path.exists(file_path):
+            return False, "Chart of accounts not found"
+        
         # Load chart of accounts
-        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+        with open(file_path, 'r') as f:
             chart_data = json.load(f)
             accounts = chart_data.get('accounts', [])
             
@@ -407,7 +495,7 @@ def reverse_account_balances(transaction: Transaction) -> tuple[bool, Optional[s
             updated_accounts.add(account['id'])
             
         # Save changes
-        with open(CHART_OF_ACCOUNTS_FILE, 'w') as f:
+        with open(file_path, 'w') as f:
             json.dump(chart_data, f, indent=2)
             
         return True, None
@@ -469,7 +557,15 @@ def create_transaction():
             return validation_response
             
         # Load chart of accounts to get account names
-        with open(CHART_OF_ACCOUNTS_FILE, 'r') as f:
+        uid = get_user_id()
+        if not uid:
+            return jsonify({'success': False, 'error': 'User ID not found'}), 400
+        
+        file_path = os.path.join(DATA_DIR, uid, 'chart_of_accounts.json')
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'error': 'Chart of accounts not found'}), 400
+        
+        with open(file_path, 'r') as f:
             chart_data = json.load(f)
             accounts = {acc['id']: acc for acc in chart_data.get('accounts', [])}
         
@@ -513,116 +609,80 @@ def create_transaction():
             'error': str(e)
         }), 500
 
-@transactions_bp.route('/list', methods=['GET'])
+@transactions_bp.route('/list_transactions', methods=['GET'])
 def list_transactions():
     """Get a paginated list of transactions with optional filters"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        # Get query parameters
+        data = Transaction.load_user_transactions(uid)
+        transactions = data.get('transactions', [])
+
+        # Apply filters
+        status = request.args.get('status')
+        if status:
+            transactions = [t for t in transactions if t['status'] == status]
+
+        transaction_type = request.args.get('type')
+        if transaction_type:
+            transactions = [t for t in transactions if t['transaction_type'] == transaction_type]
+
+        reference_type = request.args.get('reference_type')
+        if reference_type:
+            transactions = [t for t in transactions if t['reference_type'] == reference_type]
+
+        reference_id = request.args.get('reference_id')
+        if reference_id:
+            transactions = [t for t in transactions if t['reference_id'] == reference_id]
+
+        # Sort by date (newest first)
+        transactions.sort(key=lambda x: x['date'], reverse=True)
+
+        # Pagination
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 10))
-        transaction_type = request.args.get('type')
-        sub_type = request.args.get('sub_type')
-        status = request.args.get('status')
-        reference_type = request.args.get('reference_type')
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        # Load transactions
-        transactions_data = load_transactions()
-        transactions = transactions_data.get('transactions', [])
-        
-        # Load invoices to get payment information
-        try:
-            with open(os.path.join(DATA_DIR, 'invoices.json'), 'r') as f:
-                invoices_data = json.load(f)
-                invoices = {inv['id']: inv for inv in invoices_data.get('invoices', [])}
-        except:
-            invoices = {}
-        
-        # Apply filters
-        if transaction_type:
-            transactions = [t for t in transactions if t.get('transaction_type') == transaction_type]
-        if sub_type:
-            transactions = [t for t in transactions if t.get('sub_type') == sub_type]
-        if status:
-            transactions = [t for t in transactions if t.get('status') == status]
-        if reference_type:
-            transactions = [t for t in transactions if t.get('reference_type') == reference_type]
-        if start_date:
-            transactions = [t for t in transactions if t.get('date', '') >= start_date]
-        if end_date:
-            transactions = [t for t in transactions if t.get('date', '') <= end_date]
-            
-        # Add payment information for invoice transactions
-        for transaction in transactions:
-            if transaction.get('reference_type') == 'invoice':
-                invoice_id = transaction.get('reference_id')
-                if invoice_id and invoice_id in invoices:
-                    invoice = invoices[invoice_id]
-                    transaction['invoice_status'] = invoice.get('status', 'unknown')
-                    transaction['invoice_total'] = invoice.get('total_amount', 0)
-                    transaction['invoice_balance'] = invoice.get('balance_due', 0)
-                    transaction['invoice_paid'] = float(invoice.get('total_amount', 0)) - float(invoice.get('balance_due', 0))
-                    transaction['last_payment_date'] = invoice.get('last_payment_date')
-            elif transaction.get('reference_type') == 'invoice_payment':
-                # For payment transactions, extract the invoice ID from reference_id (format: "invoice_id_payment_id")
-                if transaction.get('reference_id'):
-                    invoice_id = transaction.get('reference_id').split('_')[0]
-                    if invoice_id in invoices:
-                        invoice = invoices[invoice_id]
-                        transaction['invoice_status'] = invoice.get('status', 'unknown')
-                        transaction['invoice_total'] = invoice.get('total_amount', 0)
-                        transaction['invoice_balance'] = invoice.get('balance_due', 0)
-                        transaction['invoice_paid'] = float(invoice.get('total_amount', 0)) - float(invoice.get('balance_due', 0))
-                        transaction['last_payment_date'] = invoice.get('last_payment_date')
-        
-        # Sort transactions by date (newest first)
-        transactions.sort(key=lambda x: x.get('date', ''), reverse=True)
-        
-        # Calculate pagination
-        total_items = len(transactions)
-        total_pages = (total_items + per_page - 1) // per_page
-        start_idx = (page - 1) * per_page
-        end_idx = start_idx + per_page
-        
-        # Get paginated transactions
-        paginated_transactions = transactions[start_idx:end_idx]
-        
+        start = (page - 1) * per_page
+        end = start + per_page
+
+        paginated_transactions = transactions[start:end]
+        total_pages = (len(transactions) + per_page - 1) // per_page
+
         return jsonify({
             'transactions': paginated_transactions,
-            'pagination': {
-                'total_items': total_items,
-                'total_pages': total_pages,
-                'current_page': page,
-                'per_page': per_page,
-                'has_next': page < total_pages,
-                'has_prev': page > 1
-            }
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'message': f'Error listing transactions: {str(e)}'}), 500
+            'page': page,
+            'per_page': per_page,
+            'total_pages': total_pages,
+            'total_items': len(transactions)
+        })
 
-@transactions_bp.route('/get/<transaction_id>', methods=['GET'])
+    except Exception as e:
+        print(f"Error listing transactions: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@transactions_bp.route('/get_transaction/<transaction_id>', methods=['GET'])
 def get_transaction(transaction_id):
     """Get details of a specific transaction"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        # Load transactions
-        data = load_transactions()
-        
-        # Find transaction
+        data = Transaction.load_user_transactions(uid)
         transaction = next(
-            (t for t in data.get('transactions', []) if t['id'] == transaction_id),
+            (t for t in data.get('transactions', []) if t['id'] == transaction_id), 
             None
         )
         
         if not transaction:
-            return jsonify({'message': 'Transaction not found'}), 404
+            return jsonify({'error': 'Transaction not found'}), 404
             
         return jsonify(transaction)
         
     except Exception as e:
-        return jsonify({'message': f'Error getting transaction: {str(e)}'}), 500
+        print(f"Error getting transaction: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 @transactions_bp.route('/patch/<transaction_id>', methods=['PATCH'])
 def patch_transaction(transaction_id):
@@ -681,13 +741,22 @@ def delete_transaction(transaction_id):
         
         # Find transaction
         transaction_index = None
+        transaction_to_delete = None
         for i, t in enumerate(transactions):
             if t['id'] == transaction_id:
                 transaction_index = i
+                transaction_to_delete = t
                 break
         
         if transaction_index is None:
             return jsonify({'message': 'Transaction not found'}), 404
+            
+        # If transaction was posted, reverse its effect on account balances
+        if transaction_to_delete.get('status') == 'posted':
+            transaction_obj = Transaction(**transaction_to_delete)
+            success, error = reverse_account_balances(transaction_obj)
+            if not success:
+                return jsonify({'message': f'Failed to reverse balances: {error}'}), 500
             
         # Remove transaction
         transactions.pop(transaction_index)
@@ -695,6 +764,33 @@ def delete_transaction(transaction_id):
         # Save changes
         if not save_transactions(data):
             return jsonify({'message': 'Failed to save changes'}), 500
+            
+        # Recalculate all account balances from scratch
+        uid = get_user_id()
+        if not uid:
+            return jsonify({'message': 'User ID not found'}), 401
+            
+        file_path = os.path.join(DATA_DIR, uid, 'chart_of_accounts.json')
+        if not os.path.exists(file_path):
+            return jsonify({'message': 'Chart of accounts not found'}), 404
+            
+        # Load chart of accounts
+        with open(file_path, 'r') as f:
+            chart_data = json.load(f)
+            accounts = chart_data.get('accounts', [])
+            
+        # Reset all balances to opening balance
+        for account in accounts:
+            account['currentBalance'] = account.get('openingBalance', 0.0)
+            account['lastTransactionDate'] = None
+            
+        # Reapply all posted transactions
+        for transaction in transactions:
+            if transaction.get('status') == 'posted':
+                transaction_obj = Transaction(**transaction)
+                success, error = update_account_balances(transaction_obj)
+                if not error:
+                    return jsonify({'message': f'Failed to update balances: {error}'}), 500
             
         return jsonify({'message': 'Transaction deleted successfully'})
         
@@ -800,11 +896,18 @@ def void_transaction(transaction_id):
             invoice_id = transaction['reference_id'].split('_')[0]  # Get invoice ID from reference
             
             # Load invoices
-            with open(os.path.join(DATA_DIR, 'invoices.json'), 'r') as f:
-                invoices_data = json.load(f)
+            try:
+                uid = get_user_id()
+                if not uid:
+                    return jsonify({'message': 'User ID not found'}), 400
+                
+                with open(os.path.join(DATA_DIR, uid, 'invoices.json'), 'r') as f:
+                    invoices_data = json.load(f)
+            except:
+                invoices_data = {}
                 
             # Find invoice
-            invoice = next((inv for inv in invoices_data['invoices'] if inv['id'] == invoice_id), None)
+            invoice = next((inv for inv in invoices_data.get('invoices', []) if inv['id'] == invoice_id), None)
             if invoice:
                 # Recalculate total paid
                 total_paid = sum(
@@ -824,7 +927,7 @@ def void_transaction(transaction_id):
                     invoice['status'] = 'paid'
                     
                 # Save changes
-                with open(os.path.join(DATA_DIR, 'invoices.json'), 'w') as f:
+                with open(os.path.join(DATA_DIR, uid, 'invoices.json'), 'w') as f:
                     json.dump(invoices_data, f, indent=2)
             
         return jsonify({

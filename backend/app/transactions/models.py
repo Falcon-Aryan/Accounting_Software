@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 from datetime import datetime, date
 from enum import Enum, auto
+import os
+import json
 
 class TransactionType(Enum):
     """Types of transactions"""
@@ -10,6 +12,7 @@ class TransactionType(Enum):
     PAYMENT_RECEIVED = 'payment_received'  # Money received from customers
     PAYMENT_MADE = 'payment_made'    # Money paid to vendors
     EXPENSE = 'expense'              # Business expenses
+    EQUITY = 'equity'                # Owner investments or withdrawals
     JOURNAL = 'journal'              # Manual journal entries
     TRANSFER = 'transfer'            # Fund transfers between accounts
     ADJUSTMENT = 'adjustment'        # Inventory or account adjustments
@@ -39,6 +42,11 @@ class TransactionSubType(Enum):
     PAYROLL = 'payroll'
     ADVERTISING = 'advertising'
     OFFICE_SUPPLIES = 'office_supplies'
+    
+    # Equity sub-types
+    OWNER_INVESTMENT = 'owner_investment'
+    OWNER_WITHDRAWAL = 'owner_withdrawal'
+    RETAINED_EARNINGS = 'retained_earnings'
     
     # Adjustment sub-types
     INVENTORY_ADJUSTMENT = 'inventory_adjustment'
@@ -95,6 +103,43 @@ class TransactionEntry:
 @dataclass
 class Transaction:
     """Represents a complete transaction with multiple entries"""
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    # Static methods for file handling
+    @staticmethod
+    def get_user_data_file(uid: str) -> str:
+        """Get the path to the user's transactions.json file"""
+        user_dir = os.path.join(Transaction.BASE_DIR, 'data', uid)
+        if not os.path.exists(user_dir):
+            os.makedirs(user_dir)
+        return os.path.join(user_dir, 'transactions.json')
+
+    @staticmethod
+    def load_user_transactions(uid: str) -> Dict:
+        """Load transactions data from JSON file"""
+        file_path = Transaction.get_user_data_file(uid)
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    return json.load(f)
+            return {'transactions': []}
+        except Exception as e:
+            print(f"Error loading transactions: {str(e)}")
+            return {'transactions': []}
+
+    @staticmethod
+    def save_user_transactions(uid: str, data: Dict) -> bool:
+        """Save transactions data to JSON file"""
+        file_path = Transaction.get_user_data_file(uid)
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error saving transactions: {str(e)}")
+            return False
+
+    # Instance fields
     id: str
     date: str
     entries: List[TransactionEntry]

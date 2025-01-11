@@ -62,7 +62,7 @@ class TransactionSubType(Enum):
     
     # Invoice sub-types
     INVOICE_DRAFT = 'invoice_draft'
-    INVOICE_POSTED = 'invoice_posted'
+    INVOICE_SENT = 'invoice_sent'
     INVOICE_PAID = 'invoice_paid'
     INVOICE_PARTIALLY_PAID = 'invoice_partially_paid'
     INVOICE_OVERDUE = 'invoice_overdue'

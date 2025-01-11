@@ -47,9 +47,7 @@
 
       <!-- Estimate Date -->
       <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Estimate Date*
-        </label>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Estimate Date*</label>
         <input
           v-model="form.estimate_date"
           type="date"
@@ -58,11 +56,20 @@
         />
       </div>
 
+      <!-- Expiry Date -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date*</label>
+        <input
+          v-model="form.expiry_date"
+          type="date"
+          required
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        />
+      </div>
+
       <!-- Status -->
       <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">
-          Status*
-        </label>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Status*</label>
         <select
           v-model="form.status"
           required
@@ -91,7 +98,7 @@
               </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-              <tr v-for="(product, index) in form.products" :key="index">
+              <tr v-for="(product, index) in form.line_items" :key="index">
                 <td class="px-4 py-4">
                   <select
                     v-model="product.id"
@@ -197,8 +204,8 @@
             class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
             :disabled="isSubmitting"
           >
-            Save Changes
-          </button>
+            {{ isSubmitting ? 'Saving...' : 'Save Changes' }}
+        </button>
         </div>
       </div>
     </form>
@@ -236,8 +243,11 @@ const statusTypes = ['Draft', 'Sent', 'Accepted', 'Rejected']
 const form = ref({
   customer_name: '',
   estimate_date: '',
+  expiry_date: '',
   status: '',
-  products: []
+  line_items: [],
+  notes: '',
+  terms_conditions: ''
 })
 
 const fetchCustomers = async () => {
@@ -287,8 +297,9 @@ watch(() => props.estimate, async (newEstimate) => {
     form.value = {
       customer_name: newEstimate.customer_name,
       estimate_date: newEstimate.estimate_date,
+      expiry_date: newEstimate.expiry_date,
       status: newEstimate.status,
-      products: newEstimate.products.map(product => {
+      line_items: newEstimate.line_items.map(product => {
         // Find the matching product from our products list
         const matchingProduct = products.value.find(p => p.name === product.name)
         return {
@@ -303,7 +314,9 @@ watch(() => props.estimate, async (newEstimate) => {
           income_account_id: product.income_account_id || '',
           expense_account_id: product.expense_account_id || ''
         }
-      })
+      }),
+      notes: newEstimate.notes,
+      terms_conditions: newEstimate.terms_conditions
     }
   }
 }, { immediate: true })
@@ -316,11 +329,11 @@ function formatCurrency(amount) {
 }
 
 const calculateTotal = computed(() => {
-  return form.value.products.reduce((sum, product) => sum + (Number(product.price) * Number(product.quantity) || 0), 0)
+  return form.value.line_items.reduce((sum, product) => sum + (Number(product.price) * Number(product.quantity) || 0), 0)
 })
 
 const addProduct = () => {
-  form.value.products.push({
+  form.value.line_items.push({
     id: '',
     name: '',
     description: '',
@@ -335,7 +348,7 @@ const addProduct = () => {
 }
 
 const removeProduct = (index) => {
-  form.value.products.splice(index, 1)
+  form.value.line_items.splice(index, 1)
 }
 
 const close = () => {
@@ -344,6 +357,7 @@ const close = () => {
   form.value = {
     customer_name: '',
     estimate_date: '',
+    expiry_date: '',
     status: ''
   }
 }
@@ -353,36 +367,42 @@ async function handleSubmit() {
     isSubmitting.value = true
     errorMessage.value = ''
 
-    const customer = customers.value.find(c => 
-      `${c.first_name} ${c.last_name}` === form.value.customer_name
-    )
-
-    const updatedData = {
-      id: props.estimate.id,
-      customer_id: customer?.id,
+    // Prepare the invoice data
+    const invoiceData = {
       customer_name: form.value.customer_name,
-      estimate_date: form.value.estimate_date,
+      invoice_date: form.value.invoice_date,
+      due_date: form.value.due_date,
+      payment_terms: form.value.payment_terms,
       status: form.value.status,
-      products: form.value.products.map(p => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        price: Number(p.price),
-        quantity: Number(p.quantity),
-        type: p.type,
-        sell_enabled: p.sell_enabled,
-        purchase_enabled: p.purchase_enabled,
-        income_account_id: p.income_account_id,
-        expense_account_id: p.expense_account_id
-      })),
-      total_amount: calculateTotal.value
+      line_items: form.value.line_items.map(item => ({
+        product_id: item.id,
+        description: item.description,
+        quantity: Number(item.quantity),
+        unit_price: Number(item.price)
+      }))
     }
 
-    emit('update', updatedData)
+    // Make API call to update invoice
+    const response = await fetch(`${config.public.apiBase}/api/invoices/update_invoice/${props.invoice.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${await getIdToken()}`
+      },
+      body: JSON.stringify(invoiceData)
+    })
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || 'Failed to update invoice')
+    }
+
+    // Close modal and emit event
+    emit('invoice-updated')
     close()
   } catch (error) {
-    console.error('Error updating estimate:', error)
-    errorMessage.value = 'Failed to update estimate. Please try again.'
+    console.error('Error updating invoice:', error)
+    errorMessage.value = error.message || 'Failed to update invoice. Please try again.'
   } finally {
     isSubmitting.value = false
   }
@@ -417,8 +437,8 @@ function handleProductSelect(index, productId) {
 
   const selectedProduct = products.value.find(p => p.id === productId)
   if (selectedProduct) {
-    const currentQuantity = form.value.products[index].quantity || 1
-    form.value.products[index] = {
+    const currentQuantity = form.value.line_items[index].quantity || 1
+    form.value.line_items[index] = {
       id: selectedProduct.id,
       name: selectedProduct.name,
       description: selectedProduct.description || '',

@@ -1,16 +1,11 @@
 <template>
   <BaseEditFormModal
-    :is-open="props.invoice !== null"
+    :is-open="isOpen"
     title="Edit Invoice"
-    width="lg"
+    width="md"
     @close="close"
   >
     <form @submit.prevent="handleSubmit">
-      <!-- Error Message -->
-      <div v-if="errorMessage" class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-        {{ errorMessage }}
-      </div>
-
       <!-- Customer Selection -->
       <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 mb-2">Customer</label>
@@ -34,7 +29,7 @@
       <!-- New Customer Navigation -->
       <div v-if="form.customer_name === 'new_customer'" class="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
         <p class="text-sm text-green-700">
-          You'll be redirected to add a new customer. Your invoice changes will be discarded.
+          You'll be redirected to add a new customer. Your invoice draft will be discarded.
         </p>
         <button
           type="button"
@@ -45,26 +40,43 @@
         </button>
       </div>
 
-      <!-- Invoice Dates -->
-      <div class="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
-          <input
-            v-model="form.invoice_date"
-            type="date"
-            required
-            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-          />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
-          <input
-            v-model="form.due_date"
-            type="date"
-            required
-            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-          />
-        </div>
+      <!-- Invoice Date -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
+        <input
+          v-model="form.invoice_date"
+          type="date"
+          required
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        />
+      </div>
+
+      <!-- Payment Terms -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
+        <select
+          v-model="form.payment_terms"
+          required
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        >
+          <option value="due_on_receipt">Due on Receipt</option>
+          <option value="net_15">Net 15</option>
+          <option value="net_30">Net 30</option>
+          <option value="net_60">Net 60</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+
+      <!-- Due Date -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+        <input
+          v-model="form.due_date"
+          type="date"
+          required
+          :disabled="form.payment_terms !== 'custom'"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        />
       </div>
 
       <!-- Status -->
@@ -72,34 +84,36 @@
         <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
         <select
           v-model="form.status"
+          required
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
         >
+          <option value="" disabled>Select status</option>
           <option value="draft">Draft</option>
-          <option value="posted">Posted</option>
+          <option value="sent">Sent</option>
           <option value="paid">Paid</option>
           <option value="overdue">Overdue</option>
-          <option value="void">Void</option>
+          <option value="cancelled">Cancelled</option>
         </select>
       </div>
 
-      <!-- Products -->
+      <!-- Products Table -->
       <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 mb-2">Products</label>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
               <tr v-for="(product, index) in form.products" :key="index">
-                <td class="px-6 py-4">
+                <td class="px-4 py-4">
                   <select
                     v-model="product.id"
                     @change="handleProductSelect(index, $event.target.value)"
@@ -112,44 +126,43 @@
                       v-for="prod in products" 
                       :key="prod.id"
                       :value="prod.id"
-                      :selected="prod.id === product.id"
                       class="text-sm"
                     >
-                      {{ prod.name || prod.description }}
+                      {{ prod.name }}
                     </option>
                   </select>
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-4 py-4">
                   <input
                     v-model="product.description"
                     type="text"
                     class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
                   />
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-4 py-4">
                   <input
                     v-model.number="product.price"
                     type="number"
                     required
                     step="0.01"
-                    class="w-32 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
+                    class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
                   />
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-4 py-4">
                   <input
                     v-model.number="product.quantity"
                     type="number"
                     required
                     min="1"
-                    class="w-24 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
+                    class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
                   />
                 </td>
-                <td class="px-6 py-4 text-sm text-gray-900">
+                <td class="px-4 py-4 text-sm text-gray-900">
                   {{ formatCurrency(product.price * product.quantity) }}
                 </td>
-                <td class="px-6 py-4">
+                <td class="px-4 py-4">
                   <button
-                    @click="removeProduct(index)"
+                    @click.prevent="removeProduct(index)"
                     type="button"
                     class="text-red-600 hover:text-red-900"
                   >
@@ -159,125 +172,158 @@
               </tr>
             </tbody>
           </table>
-          <div class="mt-2">
-            <button
-              type="button"
-              @click="addProduct"
-              class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-            >
-              Add Product
-            </button>
+        </div>
+
+        <div class="mt-3 flex justify-between items-center">
+          <button
+            type="button"
+            @click="addProduct"
+            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+          >
+            Add Product
+          </button>
+
+          <div class="text-right">
+            <span class="text-sm font-medium text-gray-700">Total: </span>
+            <span class="text-lg font-semibold">{{ formatCurrency(calculateTotal) }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Total -->
-      <div class="mt-4 text-right">
-        <span class="text-sm font-medium text-gray-700">Total: </span>
-        <span class="text-lg font-semibold">{{ formatCurrency(calculateTotal) }}</span>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="mt-6 flex justify-between">
-        <!-- Delete Button -->
+      <!-- Form Actions -->
+      <div class="mt-6 flex justify-end space-x-3">
         <button
           type="button"
-          @click="confirmDelete"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+          @click="close"
+          class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
         >
-          Delete Invoice
+          Cancel
         </button>
-
-        <!-- Save/Cancel Buttons -->
-        <div class="flex space-x-3">
-          <button
-            type="button"
-            @click="close"
-            class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            Save Changes
-          </button>
-        </div>
+        <button
+          type="submit"
+          class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          :disabled="isSubmitting"
+        >
+          {{ isSubmitting ? 'Editing...' : 'Edit Invoice' }}
+        </button>
       </div>
     </form>
   </BaseEditFormModal>
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRuntimeConfig } from '#app'
+import { getAuth } from 'firebase/auth'
 import BaseEditFormModal from '~/components/BaseEditFormModal.vue'
 
-const router = useRouter()
-const config = useRuntimeConfig()
-
 const props = defineProps({
+  isOpen: Boolean,
   invoice: {
     type: Object,
     required: true
   }
 })
 
-const emit = defineEmits(['close', 'update'])
+const emit = defineEmits(['close', 'save'])
+const router = useRouter()
+const config = useRuntimeConfig()
+const auth = getAuth()
 
-const errorMessage = ref('')
-const isSubmitting = ref(false)
-const statusTypes = ['draft', 'posted', 'paid', 'overdue', 'void']
+// Reactive state
 const customers = ref([])
 const products = ref([])
-
 const form = ref({
-  id: props.invoice?.id,
-  customer_name: props.invoice?.customer_name || '',
-  invoice_date: props.invoice?.invoice_date || '',
-  due_date: props.invoice?.due_date || '',
-  products: props.invoice?.products.map(p => ({
-    id: p.id,
-    name: p.name,
-    description: p.description || '',
-    price: p.price || 0,
-    quantity: p.quantity || 1,
-    type: p.type || '',
-    sell_enabled: p.sell_enabled || false,
-    purchase_enabled: p.purchase_enabled || false,
-    income_account_id: p.income_account_id || '',
-    expense_account_id: p.expense_account_id || ''
-  })),
-  status: props.invoice?.status || ''
+  customer_name: '',
+  invoice_date: new Date().toISOString().split('T')[0],
+  due_date: '',
+  payment_terms: '',
+  products: [{ id: '', description: '', price: '', quantity: 1 }],
+  status: ''
 })
 
-const fetchCustomers = async () => {
+// Watch for invoice changes and update form
+watch(() => props.invoice, (newInvoice) => {
+  if (newInvoice) {
+    form.value = {
+      customer_name: newInvoice.customer_name,
+      invoice_date: newInvoice.invoice_date,
+      due_date: newInvoice.due_date,
+      payment_terms: newInvoice.payment_terms,
+      products: newInvoice.line_items.map(item => ({
+        id: item.product_id,
+        description: item.description,
+        price: item.unit_price,
+        quantity: item.quantity
+      })),
+      status: newInvoice.status
+    }
+  }
+}, { immediate: true })
+
+// Get current user's ID token
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
+  }
+  return user.getIdToken()
+}
+
+// Fetch customers
+async function fetchCustomers() {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`)
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to fetch customers')
+    }
+
     const data = await response.json()
-    if (response.ok && data.customers) {
+    if (data.customers) {
       customers.value = data.customers
     }
   } catch (error) {
-    console.error('Error fetching customers:', error)
-    errorMessage.value = 'Failed to load customers. Please try again.'
+    if (error.message === 'No authenticated user') {
+      console.error('Please log in to fetch customers')
+    } else {
+      console.error('Error fetching customers:', error)
+    }
   }
 }
 
-const fetchProducts = async () => {
+// Fetch products
+async function fetchProducts() {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/ProdServ/list`)
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/ProdServ/list`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to fetch products')
+    }
+
     const data = await response.json()
-    if (response.ok && data.products) {
-      products.value = data.products.map(p => ({
-        ...p,
-        name: p.name || p.description
-      }))
+    if (data.products) {
+      products.value = data.products
     }
   } catch (error) {
-    console.error('Error fetching products:', error)
+    if (error.message === 'No authenticated user') {
+      console.error('Please log in to fetch products')
+    } else {
+      console.error('Error fetching products:', error)
+    }
   }
 }
 
@@ -286,42 +332,10 @@ onMounted(() => {
   fetchProducts()
 })
 
-const navigateToCustomers = () => {
+function navigateToCustomers() {
   close()
-  router.push('/customers')
+  router.push('/customers?action=new')
 }
-
-const navigateToProducts = () => {
-  router.push('/prodServ?action=new')
-}
-
-// Watch for changes in the invoice prop
-watch(() => props.invoice, async (newInvoice) => {
-  if (newInvoice) {
-    // First fetch products to ensure we have the list
-    await fetchProducts()
-    
-    form.value = {
-      id: newInvoice.id,
-      customer_name: newInvoice.customer_name,
-      invoice_date: newInvoice.invoice_date,
-      due_date: newInvoice.due_date,
-      status: newInvoice.status,
-      products: newInvoice.products.map(product => ({
-        id: product.id,
-        name: product.name,
-        description: product.description || '',
-        price: product.price || 0,
-        quantity: product.quantity || 1,
-        type: product.type || '',
-        sell_enabled: product.sell_enabled || false,
-        purchase_enabled: product.purchase_enabled || false,
-        income_account_id: product.income_account_id || '',
-        expense_account_id: product.expense_account_id || ''
-      }))
-    }
-  }
-}, { immediate: true })
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', {
@@ -330,43 +344,9 @@ function formatCurrency(amount) {
   }).format(amount)
 }
 
-function formatDate(date) {
-  return new Intl.DateTimeFormat('en-US', {
-    dateStyle: 'medium'
-  }).format(new Date(date))
-}
-
 const calculateTotal = computed(() => {
-  if (!form.value.products) return 0
-  return form.value.products.reduce((sum, product) => {
-    const price = parseFloat(product.price) || 0
-    const quantity = parseInt(product.quantity) || 0
-    return sum + price * quantity
-  }, 0)
+  return form.value.products.reduce((sum, product) => sum + (Number(product.price) * Number(product.quantity) || 0), 0)
 })
-
-function handleProductSelect(index, productId) {
-  if (productId === 'new_product') {
-    navigateToProducts()
-    return
-  }
-
-  const selectedProduct = products.value.find(p => p.id === productId)
-  if (selectedProduct) {
-    form.value.products[index] = {
-      id: selectedProduct.id,
-      name: selectedProduct.name,
-      description: selectedProduct.description || '',
-      price: selectedProduct.unit_price,
-      quantity: form.value.products[index]?.quantity || 1,
-      type: selectedProduct.type,
-      sell_enabled: selectedProduct.sell_enabled,
-      purchase_enabled: selectedProduct.purchase_enabled,
-      income_account_id: selectedProduct.income_account_id,
-      expense_account_id: selectedProduct.expense_account_id
-    }
-  }
-}
 
 function addProduct() {
   form.value.products.push({
@@ -387,17 +367,108 @@ function removeProduct(index) {
   form.value.products.splice(index, 1)
 }
 
+function handleProductSelect(index, productId) {
+  if (productId === 'new_product') {
+    router.push('/prodServ?action=new')
+    return
+  }
+
+  const selectedProduct = products.value.find(p => p.id === productId)
+  if (selectedProduct) {
+    form.value.products[index] = {
+      id: selectedProduct.id,
+      name: selectedProduct.name,
+      description: selectedProduct.description || '',
+      price: selectedProduct.unit_price,
+      quantity: form.value.products[index]?.quantity || 1,
+      type: selectedProduct.type,
+      sell_enabled: selectedProduct.sell_enabled,
+      purchase_enabled: selectedProduct.purchase_enabled,
+      income_account_id: selectedProduct.income_account_id,
+      expense_account_id: selectedProduct.expense_account_id
+    }
+  }
+}
+
+const updateDueDate = (terms) => {
+  const invoiceDate = new Date(form.value.invoice_date)
+  let dueDate = new Date(invoiceDate)
+
+  switch (terms) {
+    case 'net_15':
+      dueDate.setDate(invoiceDate.getDate() + 15)
+      break
+    case 'net_30':
+      dueDate.setDate(invoiceDate.getDate() + 30)
+      break
+    case 'net_60':
+      dueDate.setDate(invoiceDate.getDate() + 60)
+      break
+    default: // due_on_receipt or custom
+      dueDate = invoiceDate
+      break
+  }
+  
+  form.value.due_date = dueDate.toISOString().split('T')[0]
+}
+
+watch(() => form.value.payment_terms, (newTerms) => {
+  updateDueDate(newTerms)
+})
+
+watch(() => form.value.invoice_date, (newDate) => {
+  updateDueDate(form.value.payment_terms)
+})
+
+async function handleSubmit() {
+  try {
+    if (form.value.customer_name === 'new_customer') {
+      navigateToCustomers()
+      return
+    }
+
+    const customer = customers.value.find(c => 
+      `${c.first_name} ${c.last_name}` === form.value.customer_name
+    )
+
+    const invoiceData = {
+      id: props.invoice.id,
+      customer_id: customer?.id,
+      customer_name: form.value.customer_name,
+      invoice_date: form.value.invoice_date,
+      due_date: form.value.due_date,
+      payment_terms: form.value.payment_terms,
+      status: form.value.status,
+      line_items: form.value.products.map(p => ({
+        product_id: p.id,
+        description: p.description || '',
+        unit_price: Number(p.price),
+        quantity: Number(p.quantity)
+      })),
+      total_amount: calculateTotal.value
+    }
+
+    emit('save', invoiceData)
+    close()
+  } catch (error) {
+    console.error('Error preparing invoice data:', error)
+  }
+}
+
+
 function close() {
+  resetForm()
+  emit('close')
+}
+
+function resetForm() {
   form.value = {
-    id: '',
     customer_name: '',
-    invoice_date: '',
+    invoice_date: new Date().toISOString().split('T')[0],
     due_date: '',
-    products: [],
+    products: [{ id: '', description: '', price: '', quantity: 1 }],
     status: ''
   }
-  errorMessage.value = ''
-  emit('close')
 }
 
 // Watch for product changes to update the form
@@ -409,77 +480,13 @@ watch(() => products.value, (newProducts) => {
         if (matchingProduct) {
           form.value.products[index] = {
             ...form.value.products[index],
-            name: matchingProduct.name || matchingProduct.description,
+            name: matchingProduct.name,
             description: matchingProduct.description,
-            price: matchingProduct.unit_price,
-            type: matchingProduct.type,
-            sell_enabled: matchingProduct.sell_enabled,
-            purchase_enabled: matchingProduct.purchase_enabled,
-            income_account_id: matchingProduct.income_account_id,
-            expense_account_id: matchingProduct.expense_account_id
+            price: matchingProduct.unit_price
           }
         }
       }
     })
   }
 }, { deep: true })
-
-async function handleSubmit() {
-  try {
-    isSubmitting.value = true
-    errorMessage.value = ''
-
-    const customer = customers.value.find(c => 
-      `${c.first_name} ${c.last_name}` === form.value.customer_name
-    )
-
-    const updatedData = {
-      id: props.invoice.id,
-      customer_id: customer?.id,
-      customer_name: form.value.customer_name,
-      invoice_date: form.value.invoice_date,
-      due_date: form.value.due_date,
-      status: form.value.status,
-      products: form.value.products.map(p => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        price: Number(p.price),
-        quantity: Number(p.quantity),
-        type: p.type,
-        sell_enabled: p.sell_enabled,
-        purchase_enabled: p.purchase_enabled,
-        income_account_id: p.income_account_id,
-        expense_account_id: p.expense_account_id
-      })),
-      total_amount: calculateTotal.value
-    }
-
-    emit('update', updatedData)
-    close()
-  } catch (error) {
-    console.error('Error updating invoice:', error)
-    errorMessage.value = 'Failed to update invoice. Please try again.'
-  } finally {
-    isSubmitting.value = false
-  }
-}
-
-async function confirmDelete() {
-  if (confirm('Are you sure you want to delete this invoice?')) {
-    try {
-      const response = await fetch(`${config.public.apiBase}/api/invoices/delete_invoice/${props.invoice.id}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) throw new Error('Failed to delete invoice')
-
-      emit('update')
-      close()
-    } catch (error) {
-      errorMessage.value = error.message
-      console.error('Error deleting invoice:', error)
-    }
-  }
-}
 </script>

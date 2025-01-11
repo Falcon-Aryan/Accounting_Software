@@ -271,7 +271,7 @@ const handleSubmit = async () => {
     const auth = getAuth()
     const idToken = await auth.currentUser?.getIdToken()
 
-    const response = await fetch(`${config.public.apiBase}/api/customers/create`, {
+    const response = await fetch(`${config.public.apiBase}/api/customers/create_customer`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

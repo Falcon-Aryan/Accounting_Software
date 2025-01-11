@@ -33,10 +33,11 @@
               v-model="selectedStatus"
               class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
             >
-              <option value="All">All Status</option>
+              <option value="All">All</option>
               <option value="draft">Draft</option>
-              <option value="posted">Posted</option>
+              <option value="sent">Sent</option>
               <option value="paid">Paid</option>
+              <option value="partial">Partially Paid</option>
               <option value="overdue">Overdue</option>
               <option value="void">Void</option>
             </select>
@@ -144,6 +145,17 @@
                   </button>
                 </div>
 
+                <!-- Send Invoice Option - Only for draft invoices -->
+                <template v-if="invoice.status === 'draft'">
+                  <button 
+                  @click="sendInvoice(invoice)" 
+                  class="w-full text-left px-4 py-2 text-sm text-blue-600 hover:text-blue-800 hover:bg-gray-100"
+                  role="menuitem"
+                  >
+                    Send Invoice
+                  </button>
+                </template>
+
                 <!-- Post Option - Only for draft invoices -->
                 <div v-if="invoice.status === 'draft'" class="py-1 border-t border-gray-100">
                   <button
@@ -151,7 +163,7 @@
                     class="w-full text-left px-4 py-2 text-sm text-green-700 hover:bg-gray-100"
                     role="menuitem"
                   >
-                    Post
+                    Post Invoice
                   </button>
                 </div>
 
@@ -163,7 +175,7 @@
                     role="menuitem"
                     :disabled="invoice.status === 'void'"
                   >
-                    Edit
+                    Edit Invoice
                   </button>
                 </div>
 
@@ -174,7 +186,7 @@
                     class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
                     role="menuitem"
                   >
-                    Void
+                    Void Invoice
                   </button>
                 </div>
 
@@ -185,7 +197,7 @@
                     class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
                     role="menuitem"
                   >
-                    Delete
+                    Delete Invoice
                   </button>
                 </div>
               </div>
@@ -203,12 +215,11 @@
       @close="closeNewInvoiceModal"
       @save="handleCreateInvoice"
     />
-    <EditInvoiceModal
-      v-if="selectedInvoice"
-      :invoice="selectedInvoice"
+    <EditInvoiceModal 
+      :invoice="selectedEditInvoice"
       :is-open="showEditInvoiceModal"
-      @close="closeEditInvoiceModal"
       @save="handleUpdateInvoice"
+      @close="closeEditInvoiceModal"
     />
     <PayInvoiceModal
       :show="showPayInvoiceModal"
@@ -225,48 +236,56 @@ definePageMeta({
 })
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRuntimeConfig } from '#app'
+import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import TablePageLayout from '~/components/TablePageLayout.vue'
-import BaseButton from '~/components/BaseButton.vue'
 import NewInvoiceModal from '~/components/NewInvoiceModal.vue'
 import EditInvoiceModal from '~/components/EditInvoiceModal.vue'
 import PayInvoiceModal from '~/components/PayInvoiceModal.vue'
-import { Teleport } from 'vue'
+import { useRuntimeConfig } from '#app'
+import { initializeApp } from 'firebase/app'
+import { firebaseConfig } from '../config/firebase.config'
 
+// Initialize Firebase
+const app = initializeApp(firebaseConfig)
+const auth = getAuth(app)
 const config = useRuntimeConfig()
+
+// Reactive state
 const invoices = ref([])
-const searchQuery = ref('')
-const selectedStatus = ref('All')
-const showNewInvoiceModal = ref(false)
-const selectedInvoice = ref(null)
-const selectedPaymentInvoice = ref(null)
-const openOptionsForInvoice = ref(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
-const showPayInvoiceModal = ref(false)
+const openOptionsForInvoice = ref(null)
+const selectedStatus = ref('All')
+const searchQuery = ref('')
+const showNewInvoiceModal = ref(false)
 const showEditInvoiceModal = ref(false)
+const showPayInvoiceModal = ref(false)
+const selectedEditInvoice = ref(null)
+const selectedPaymentInvoice = ref(null)
+const isAuthenticated = ref(false)
 
-// Close dropdown when clicking outside
-const handleClickOutside = (event) => {
-  if (openOptionsForInvoice.value && !event.target.closest('.options-container')) {
-    openOptionsForInvoice.value = null
+// Get current user's ID token
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
   }
+  return user.getIdToken()
 }
-
-onMounted(() => {
-  fetchInvoices()
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
 
 // Fetch invoices from the API
 async function fetchInvoices() {
   try {
     isLoading.value = true
     errorMessage.value = ''
+    const token = await getIdToken()
+    
+    await fetch(`${config.public.apiBase}/api/invoices/update_summary`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
 
     const queryParams = new URLSearchParams()
     if (selectedStatus.value !== 'All') {
@@ -276,18 +295,58 @@ async function fetchInvoices() {
       queryParams.append('search', searchQuery.value)
     }
 
-    const response = await fetch(`${config.public.apiBase}/api/invoices/list_invoices?${queryParams.toString()}`)
+    const response = await fetch(`${config.public.apiBase}/api/invoices/list_invoices?${queryParams.toString()}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
     if (!response.ok) {
-      throw new Error('Failed to fetch invoices')
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to fetch invoices')
     }
 
     const data = await response.json()
     invoices.value = data.invoices
   } catch (error) {
-    errorMessage.value = error.message
+    if (error.message === 'No authenticated user') {
+      errorMessage.value = 'Please log in to view invoices'
+    } else {
+      errorMessage.value = error.message
+    }
     console.error('Error fetching invoices:', error)
   } finally {
     isLoading.value = false
+  }
+}
+
+// Watch for auth state changes
+onMounted(() => {
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    isAuthenticated.value = !!user
+    if (user) {
+      console.log('User is authenticated:', user.email)
+      fetchInvoices()
+    } else {
+      console.log('No user authenticated')
+      invoices.value = []
+      errorMessage.value = 'Please log in to view invoices'
+    }
+  })
+
+  document.addEventListener('click', handleClickOutside)
+
+  // Clean up subscription and event listener
+  onUnmounted(() => {
+    unsubscribe()
+    document.removeEventListener('click', handleClickOutside)
+  })
+})
+
+// Close dropdown when clicking outside
+const handleClickOutside = (event) => {
+  if (openOptionsForInvoice.value && !event.target.closest('.options-container')) {
+    openOptionsForInvoice.value = null
   }
 }
 
@@ -336,39 +395,48 @@ function toggleOptions(invoiceId, event) {
 function editInvoice(invoice) {
   showPayInvoiceModal.value = false
   showNewInvoiceModal.value = false
-  selectedInvoice.value = invoice
+  selectedEditInvoice.value = invoice
   openOptionsForInvoice.value = null
   showEditInvoiceModal.value = true
 }
 
 function closeEditInvoiceModal() {
-  selectedInvoice.value = null
+  selectedEditInvoice.value = null
   showEditInvoiceModal.value = false
 }
 
 async function handleUpdateInvoice(updatedData) {
   try {
+    const token = await getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/invoices/update_invoice/${updatedData.id}`, {
-      method: 'PATCH',
+      method: 'PUT',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(updatedData)
     })
 
-    if (!response.ok) throw new Error('Failed to update invoice')
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to update invoice')
+    }
 
     await fetchInvoices()
     closeEditInvoiceModal()
   } catch (error) {
-    errorMessage.value = error.message
+    if (error.message === 'No authenticated user') {
+      errorMessage.value = 'Please log in to update invoices'
+    } else {
+      errorMessage.value = error.message
+    }
     console.error('Error updating invoice:', error)
   }
 }
 
 async function confirmDelete(invoice) {
   const message = invoice.status !== 'draft' 
-    ? `Are you sure you want to delete invoice ${invoice.invoice_no}?\n\nWarning: This will reverse all associated transactions.`
+    ? `Are you sure you want to delete invoice ${invoice.invoice_no}?\n\nWarning: This will reverse all associated transactions.` 
     : `Are you sure you want to delete invoice ${invoice.invoice_no}?`;
 
   if (!confirm(message)) {
@@ -376,81 +444,116 @@ async function confirmDelete(invoice) {
   }
 
   try {
+    const token = await getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/invoices/delete_invoice/${invoice.id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,  
+        'Content-Type': 'application/json'      
+      }
     });
 
     if (!response.ok) {
-      const data = await response.json();
-      if (data.error_code === 'HAS_PAYMENTS') {
-        alert(data.message);
-        return;
-      }
-      throw new Error(data.message || 'Error deleting invoice');
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to delete invoice');
     }
 
-    // Remove invoice from list
-    invoices.value = invoices.value.filter(inv => inv.id !== invoice.id);
+    await fetchInvoices();
     openOptionsForInvoice.value = null;
   } catch (error) {
-    errorMessage.value = `Failed to delete invoice: ${error.message}`;
+    if (error.message === 'No authenticated user') {
+      errorMessage.value = 'Please log in to delete invoices'
+    } else {
+      errorMessage.value = error.message
+    }
+    console.error('Error deleting invoice:', error);
   }
 }
 
 async function voidInvoice(invoiceId) {
-  if (!confirm('Are you sure you want to void this invoice? This action cannot be undone.')) return
-
-  const reason = prompt('Please enter a reason for voiding this invoice:', 'User requested void')
+  const reason = prompt('Please provide a reason for voiding this invoice:')
   if (!reason) return // User cancelled the prompt
 
   try {
-    const response = await fetch(`${config.public.apiBase}/api/invoices/void_invoice/${invoiceId}`, {
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/invoices/void/${invoiceId}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ reason })
+      body: JSON.stringify({ void_reason: reason })
     })
 
     const data = await response.json()
-    
     if (!response.ok) {
-      if (data.error_code === 'ALREADY_VOIDED') {
-        errorMessage.value = data.message
-      } else {
-        throw new Error(data.message || 'Failed to void invoice')
-      }
-      return
+      throw new Error(data.error || 'Failed to void invoice')
     }
 
     await fetchInvoices()
     openOptionsForInvoice.value = null
   } catch (error) {
-    errorMessage.value = error.message
+    if (error.message === 'No authenticated user') {
+      errorMessage.value = 'Please log in to void invoices'
+    } else {
+      errorMessage.value = error.message
+    }
     console.error('Error voiding invoice:', error)
+  }
+}
+
+async function sendInvoice(invoice) {
+  if (!confirm(`Are you sure you want to send invoice ${invoice.invoice_no}?`)) {
+    return;
+  }
+
+  try {
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/invoices/send/${invoice.id}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to send invoice');
+    }
+
+    await fetchInvoices();
+    openOptionsForInvoice.value = null;
+  } catch (error) {
+    errorMessage.value = error.message;
+    console.error('Error sending invoice:', error);
   }
 }
 
 async function postInvoice(invoiceId) {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/invoices/post_invoice/${invoiceId}`, {
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/invoices/post/${invoiceId}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${token}`
       }
     })
 
+    const data = await response.json()
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || 'Failed to post invoice')
+      throw new Error(data.error || 'Failed to post invoice')
     }
 
-    // Refresh invoices list
     await fetchInvoices()
-    
+    openOptionsForInvoice.value = null
   } catch (error) {
+    if (error.message === 'No authenticated user') {
+      errorMessage.value = 'Please log in to post invoices'
+    } else {
+      errorMessage.value = error.message
+    }
     console.error('Error posting invoice:', error)
-    errorMessage.value = error.message
   }
 }
 
@@ -466,20 +569,29 @@ function closeNewInvoiceModal() {
 
 async function handleCreateInvoice(invoiceData) {
   try {
+    const token = await getIdToken()
     const response = await fetch(`${config.public.apiBase}/api/invoices/create_invoice`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(invoiceData)
     })
 
-    if (!response.ok) throw new Error('Failed to create invoice')
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create invoice')
+    }
 
     await fetchInvoices()
     closeNewInvoiceModal()
   } catch (error) {
-    errorMessage.value = error.message
+    if (error.message === 'No authenticated user') {
+      errorMessage.value = 'Please log in to create invoices'
+    } else {
+      errorMessage.value = error.message
+    }
     console.error('Error creating invoice:', error)
   }
 }
@@ -498,9 +610,32 @@ function closePayInvoiceModal() {
 }
 
 async function handlePaymentRecorded(result) {
-  await fetchInvoices()
-  showPayInvoiceModal.value = false
-  selectedPaymentInvoice.value = null
+  try {
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/invoices/add_payment/${selectedPaymentInvoice.value.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(result)
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to record payment')
+    }
+
+    await fetchInvoices()
+    closePayInvoiceModal()
+  } catch (error) {
+    if (error.message === 'No authenticated user') {
+      errorMessage.value = 'Please log in to record payments'
+    } else {
+      errorMessage.value = error.message
+    }
+    console.error('Error recording payment:', error)
+  }
 }
 
 // Watch for changes in search query or status to refresh invoices

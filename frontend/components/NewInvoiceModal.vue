@@ -51,6 +51,22 @@
         />
       </div>
 
+      <!-- Payment Terms -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
+        <select
+          v-model="form.payment_terms"
+          required
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        >
+          <option value="due_on_receipt">Due on Receipt</option>
+          <option value="net_15">Net 15</option>
+          <option value="net_30">Net 30</option>
+          <option value="net_60">Net 60</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+
       <!-- Due Date -->
       <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
@@ -58,6 +74,7 @@
           v-model="form.due_date"
           type="date"
           required
+          :disabled="form.payment_terms !== 'custom'"
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
         />
       </div>
@@ -197,66 +214,93 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useRuntimeConfig } from '#app'
+import { getAuth } from 'firebase/auth'
 import BaseNewFormModal from '~/components/BaseNewFormModal.vue'
 
-const router = useRouter()
-const config = useRuntimeConfig()
-
 const props = defineProps({
-  isOpen: {
-    type: Boolean,
-    required: true,
-    default: false
-  }
+  isOpen: Boolean
 })
 
 const emit = defineEmits(['close', 'save'])
-const isSubmitting = ref(false)
+const router = useRouter()
+const config = useRuntimeConfig()
+const auth = getAuth()
+
+// Reactive state
 const customers = ref([])
 const products = ref([])
-
 const form = ref({
   customer_name: '',
   invoice_date: new Date().toISOString().split('T')[0],
   due_date: new Date().toISOString().split('T')[0],
-  products: [{
-    id: '',
-    name: '',
-    description: '',
-    price: 0,
-    quantity: 1,
-    type: '',
-    sell_enabled: false,
-    purchase_enabled: false,
-    income_account_id: '',
-    expense_account_id: ''
-  }],
-  status: ''
+  payment_terms: 'due_on_receipt',
+  status: 'draft',
+  products: [{ id: '', description: '', price: '', quantity: 1 }]
 })
+
+// Get current user's ID token
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
+  }
+  return user.getIdToken()
+}
 
 // Fetch customers
 async function fetchCustomers() {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`)
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to fetch customers')
+    }
+
     const data = await response.json()
-    if (response.ok && data.customers) {
+    if (data.customers) {
       customers.value = data.customers
     }
   } catch (error) {
-    console.error('Error fetching customers:', error)
+    if (error.message === 'No authenticated user') {
+      console.error('Please log in to fetch customers')
+    } else {
+      console.error('Error fetching customers:', error)
+    }
   }
 }
 
 // Fetch products
-const fetchProducts = async () => {
+async function fetchProducts() {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/ProdServ/list`)
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/ProdServ/list`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to fetch products')
+    }
+
     const data = await response.json()
-    if (response.ok && data.products) {
+    if (data.products) {
       products.value = data.products
     }
   } catch (error) {
-    console.error('Error fetching products:', error)
+    if (error.message === 'No authenticated user') {
+      console.error('Please log in to fetch products')
+    } else {
+      console.error('Error fetching products:', error)
+    }
   }
 }
 
@@ -323,6 +367,36 @@ function handleProductSelect(index, productId) {
   }
 }
 
+const updateDueDate = (terms) => {
+  const invoiceDate = new Date(form.value.invoice_date)
+  let dueDate = new Date(invoiceDate)
+
+  switch (terms) {
+    case 'net_15':
+      dueDate.setDate(invoiceDate.getDate() + 15)
+      break
+    case 'net_30':
+      dueDate.setDate(invoiceDate.getDate() + 30)
+      break
+    case 'net_60':
+      dueDate.setDate(invoiceDate.getDate() + 60)
+      break
+    default: // due_on_receipt or custom
+      dueDate = invoiceDate
+      break
+  }
+  
+  form.value.due_date = dueDate.toISOString().split('T')[0]
+}
+
+watch(() => form.value.payment_terms, (newTerms) => {
+  updateDueDate(newTerms)
+})
+
+watch(() => form.value.invoice_date, (newDate) => {
+  updateDueDate(form.value.payment_terms)
+})
+
 async function handleSubmit() {
   try {
     if (form.value.customer_name === 'new_customer') {
@@ -339,18 +413,13 @@ async function handleSubmit() {
       customer_name: form.value.customer_name,
       invoice_date: form.value.invoice_date,
       due_date: form.value.due_date,
+      payment_terms: form.value.payment_terms,
       status: form.value.status,
-      products: form.value.products.map(p => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        price: Number(p.price),
-        quantity: Number(p.quantity),
-        type: p.type,
-        sell_enabled: p.sell_enabled,
-        purchase_enabled: p.purchase_enabled,
-        income_account_id: p.income_account_id,
-        expense_account_id: p.expense_account_id
+      line_items: form.value.products.map(p => ({
+        product_id: p.id,
+        description: p.description || '',
+        unit_price: Number(p.price),
+        quantity: Number(p.quantity)
       })),
       total_amount: calculateTotal.value
     }
@@ -358,7 +427,7 @@ async function handleSubmit() {
     emit('save', invoiceData)
     close()
   } catch (error) {
-    console.error('Error creating invoice:', error)
+    console.error('Error preparing invoice data:', error)
   }
 }
 
@@ -371,19 +440,8 @@ function resetForm() {
   form.value = {
     customer_name: '',
     invoice_date: new Date().toISOString().split('T')[0],
-    due_date: new Date().toISOString().split('T')[0],
-    products: [{
-      id: '',
-      name: '',
-      description: '',
-      price: 0,
-      quantity: 1,
-      type: '',
-      sell_enabled: false,
-      purchase_enabled: false,
-      income_account_id: '',
-      expense_account_id: ''
-    }],
+    due_date: '',
+    products: [{ id: '', description: '', price: '', quantity: 1 }],
     status: ''
   }
 }

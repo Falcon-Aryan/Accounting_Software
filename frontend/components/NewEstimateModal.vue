@@ -2,7 +2,7 @@
   <BaseNewFormModal
     :is-open="isOpen"
     title="Create New Estimate"
-    width="md"
+    width="lg"
     @close="close"
   >
     <form @submit.prevent="handleSubmit">
@@ -51,6 +51,17 @@
         />
       </div>
 
+      <!-- Expiry Date -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date</label>
+        <input
+          v-model="form.expiry_date"
+          type="date"
+          required
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        />
+      </div>
+
       <!-- Status -->
       <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
@@ -65,26 +76,26 @@
         </select>
       </div>
 
-      <!-- Products Table -->
+      <!-- Line Items Table -->
       <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Products</label>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Line Items</label>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
               <tr>
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-              <tr v-for="(product, index) in form.products" :key="index">
+              <tr v-for="(item, index) in form.line_items" :key="index">
                 <td class="px-4 py-4">
                   <select
-                    v-model="product.id"
+                    v-model="item.product_id"
                     @change="handleProductSelect(index, $event.target.value)"
                     required
                     class="w-48 px-3 py-1.5 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
@@ -103,14 +114,14 @@
                 </td>
                 <td class="px-4 py-4">
                   <input
-                    v-model="product.description"
+                    v-model="item.description"
                     type="text"
                     class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
                   />
                 </td>
                 <td class="px-4 py-4">
                   <input
-                    v-model.number="product.price"
+                    v-model.number="item.unit_price"
                     type="number"
                     required
                     step="0.01"
@@ -119,7 +130,7 @@
                 </td>
                 <td class="px-4 py-4">
                   <input
-                    v-model.number="product.quantity"
+                    v-model.number="item.quantity"
                     type="number"
                     required
                     min="1"
@@ -127,11 +138,11 @@
                   />
                 </td>
                 <td class="px-4 py-4 text-sm text-gray-900">
-                  {{ formatCurrency(product.price * product.quantity) }}
+                  {{ formatCurrency(item.unit_price * item.quantity) }}
                 </td>
                 <td class="px-4 py-4">
                   <button
-                    @click.prevent="removeProduct(index)"
+                    @click.prevent="removeItem(index)"
                     type="button"
                     class="text-red-600 hover:text-red-900"
                   >
@@ -146,10 +157,10 @@
         <div class="mt-3 flex justify-between items-center">
           <button
             type="button"
-            @click.prevent="addProduct"
+            @click.prevent="addItem"
             class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
           >
-            Add Product
+            Add Line Item
           </button>
           
           <div class="text-right">
@@ -157,6 +168,28 @@
             <span class="text-lg font-semibold">{{ formatCurrency(calculateTotal) }}</span>
           </div>
         </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+        <textarea
+          v-model="form.notes"
+          rows="3"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+          placeholder="Add any notes about this estimate..."
+        />
+      </div>
+
+      <!-- Terms & Conditions -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Terms & Conditions</label>
+        <textarea
+          v-model="form.terms_conditions"
+          rows="3"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+          placeholder="Add terms and conditions..."
+        />
       </div>
 
       <!-- Form Actions -->
@@ -199,140 +232,133 @@ const products = ref([])
 const form = ref({
   customer_name: '',
   estimate_date: new Date().toISOString().split('T')[0],
+  expiry_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0], // 30 days from now
   status: 'draft',
-  products: []
+  line_items: [],
+  notes: '',
+  terms_conditions: ''
 })
 
-const fetchCustomers = async () => {
+async function fetchCustomers() {
   try {
     const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`)
+    if (!response.ok) throw new Error('Failed to fetch customers')
     const data = await response.json()
-    if (response.ok && data.customers) {
-      customers.value = data.customers
-    }
+    customers.value = data.customers
   } catch (error) {
     console.error('Error fetching customers:', error)
   }
 }
 
-const fetchProducts = async () => {
+async function fetchProducts() {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/ProdServ/list`)
+    const response = await fetch(`${config.public.apiBase}/api/products/list_products`)
+    if (!response.ok) throw new Error('Failed to fetch products')
     const data = await response.json()
-    if (response.ok && data.products) {
-      products.value = data.products
-    }
+    products.value = data.products
   } catch (error) {
     console.error('Error fetching products:', error)
   }
 }
 
+// Fetch data on component mount
 fetchCustomers()
 fetchProducts()
 
-const navigateToCustomers = () => {
-  close()
-  router.push('/customers')
+function navigateToCustomers() {
+  router.push('/customers?action=new')
 }
 
-const navigateToProducts = () => {
-  close()
-  router.push('/prodServ')
+function navigateToProducts() {
+  router.push('/prodServ?action=new')
 }
 
-const formatCurrency = (amount) => {
+function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD'
-  }).format(amount)
+  }).format(amount || 0)
 }
 
 const calculateTotal = computed(() => {
-  return form.value.products.reduce((sum, product) => sum + (Number(product.price) * Number(product.quantity) || 0), 0)
+  return form.value.line_items.reduce((sum, item) => sum + (Number(item.unit_price) * Number(item.quantity) || 0), 0)
 })
 
-const addProduct = () => {
-  form.value.products.push({
-    id: '',
-    name: '',
+function addItem() {
+  form.value.line_items.push({
+    product_id: '',
     description: '',
-    price: 0,
-    quantity: 1,
-    type: '',
-    sell_enabled: false,
-    purchase_enabled: false,
-    income_account_id: '',
-    expense_account_id: ''
+    unit_price: 0,
+    quantity: 1
   })
 }
 
-const removeProduct = (index) => {
-  form.value.products.splice(index, 1)
+function removeItem(index) {
+  form.value.line_items.splice(index, 1)
 }
 
-const handleProductSelect = (index, selectedProductId) => {
+function handleProductSelect(index, selectedProductId) {
   if (selectedProductId === 'new_product') {
     navigateToProducts()
     return
   }
 
-  const selectedProduct = products.value.find(p => p.id === selectedProductId)
-  if (selectedProduct) {
-    form.value.products[index] = {
-      id: selectedProduct.id,
-      name: selectedProduct.name,
-      description: selectedProduct.description || '',
-      price: selectedProduct.unit_price,
-      quantity: form.value.products[index]?.quantity || 1,
-      type: selectedProduct.type,
-      sell_enabled: selectedProduct.sell_enabled,
-      purchase_enabled: selectedProduct.purchase_enabled,
-      income_account_id: selectedProduct.income_account_id,
-      expense_account_id: selectedProduct.expense_account_id
+  const product = products.value.find(p => p.id === selectedProductId)
+  if (product) {
+    form.value.line_items[index] = {
+      ...form.value.line_items[index],
+      product_id: product.id,
+      description: product.description || '',
+      unit_price: product.unit_price
     }
   }
 }
 
-const close = () => {
+function close() {
   resetForm()
   emit('close')
 }
 
-const resetForm = () => {
+function resetForm() {
   form.value = {
     customer_name: '',
     estimate_date: new Date().toISOString().split('T')[0],
+    expiry_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
     status: 'draft',
-    products: []
+    line_items: [],
+    notes: '',
+    terms_conditions: ''
   }
 }
 
-const handleSubmit = async () => {
+async function handleSubmit() {
   try {
+    if (form.value.customer_name === 'new_customer') {
+      navigateToCustomers()
+      return
+    }
+
     const customer = customers.value.find(c => 
       `${c.first_name} ${c.last_name}` === form.value.customer_name
     )
-    
+
     const estimateData = {
-      customer_id: customer?.id,
       customer_name: form.value.customer_name,
+      customer_id: customer?.id,
       estimate_date: form.value.estimate_date,
+      expiry_date: form.value.expiry_date,
       status: form.value.status,
-      products: form.value.products.map(p => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        price: Number(p.price),
-        quantity: Number(p.quantity),
-        type: p.type,
-        sell_enabled: p.sell_enabled,
-        purchase_enabled: p.purchase_enabled,
-        income_account_id: p.income_account_id,
-        expense_account_id: p.expense_account_id
+      line_items: form.value.line_items.map(item => ({
+        product_id: item.product_id,
+        description: item.description || '',
+        unit_price: Number(item.unit_price),
+        quantity: Number(item.quantity)
       })),
+      notes: form.value.notes,
+      terms_conditions: form.value.terms_conditions,
       total_amount: calculateTotal.value
     }
-    
+
     emit('save', estimateData)
     close()
   } catch (error) {

@@ -2,64 +2,65 @@ from flask import jsonify, request
 import json
 import os
 from typing import Dict, List, Optional
-import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
+from firebase_admin import auth
 
 from . import estimates_bp
-from .models import Estimate, EstimatesSummary, Product, ESTIMATE_STATUSES
-from app.invoices.routes import (
-    load_invoices, save_invoices, get_next_invoice_number,
-    generate_invoice_id, update_summary as update_invoice_summary,
-    validate_account_id
-)
+from .models import Estimate, EstimatesSummary, EstimateLineItem, ESTIMATE_STATUSES
+from app.transactions.models import Transaction, TransactionType, TransactionSubType, TransactionEntry
+from app.chart_of_accounts.models import Account
+from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions, post_transaction
 from app.chart_of_accounts.routes import load_chart_of_accounts
 from app.products.routes import load_products
-from app.transactions.models import Transaction, TransactionType, TransactionSubType, TransactionEntry
-from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions
+from app.invoices.models import Invoice, get_next_invoice_number
 
-# File path handling
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA_DIR = os.path.join(BASE_DIR, 'data')
-ESTIMATES_FILE = os.path.join(DATA_DIR, 'estimates.json')
 
-# Default account IDs - these should match your chart of accounts
-def get_system_accounts():
-    """Get account IDs from chart of accounts"""
-    accounts = load_chart_of_accounts().get('accounts', [])
-    ar_account = next((acc for acc in accounts if acc['accountType'] == 'Accounts Receivable' and acc['isDefault']), None)
-    ap_account = next((acc for acc in accounts if acc['accountType'] == 'Accounts Payable' and acc['isDefault']), None)
-    sales_account = next((acc for acc in accounts if acc['accountType'] == 'Income' and acc['isDefault']), None)
-    cogs_account = next((acc for acc in accounts if acc['accountType'] == 'Cost of Goods Sold' and acc['isDefault']), None)
-    inventory_account = next((acc for acc in accounts if acc['accountType'] == 'Other Current Asset' and acc['detailType'] == 'Inventory' and acc['isDefault']), None)
-    
-    if not all([ar_account, ap_account, sales_account, cogs_account, inventory_account]):
-        raise Exception("Required system accounts not found in chart of accounts")
+def get_user_id():
+    """Get the user ID from the Authorization header"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split('Bearer ')[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except:
+        return None
+
+# Get account IDs from chart of accounts
+def get_system_accounts(uid: str = None):
+    """Get system accounts, optionally for a specific user"""
+    try:
+        accounts = load_chart_of_accounts(uid).get('accounts', []) if uid else []
+        ar_account = next((acc for acc in accounts if acc['accountType'] == 'Accounts Receivable' and acc['isDefault']), None)
+        sales_account = next((acc for acc in accounts if acc['accountType'] == 'Income' and acc['isDefault']), None)
         
-    return {
-        'ACCOUNTS_RECEIVABLE_ID': ar_account['id'],
-        'ACCOUNTS_PAYABLE_ID': ap_account['id'],
-        'SALES_REVENUE_ID': sales_account['id'],
-        'COGS_ID': cogs_account['id'],
-        'INVENTORY_ASSET_ID': inventory_account['id']
-    }
+        if not all([ar_account, sales_account]):
+            raise Exception("Required system accounts not found in chart of accounts")
+            
+        return {
+            'ACCOUNTS_RECEIVABLE_ID': ar_account['id'],
+            'SALES_REVENUE_ID': sales_account['id']
+        }
+    except Exception as e:
+        # Fallback values in case of error - these should match your chart of accounts
+        return {
+            'ACCOUNTS_RECEIVABLE_ID': "1100-0001",  # Accounts Receivable
+            'SALES_REVENUE_ID': "4000-0001"         # Sales Revenue
+        }
 
-# Initialize system accounts
-try:
-    system_accounts = get_system_accounts()
-    ACCOUNTS_RECEIVABLE_ID = system_accounts['ACCOUNTS_RECEIVABLE_ID']
-    ACCOUNTS_PAYABLE_ID = system_accounts['ACCOUNTS_PAYABLE_ID']
-    SALES_REVENUE_ID = system_accounts['SALES_REVENUE_ID']
-    COGS_ID = system_accounts['COGS_ID']
-    INVENTORY_ASSET_ID = system_accounts['INVENTORY_ASSET_ID']
-except Exception as e:
-    print(f"Error loading system accounts: {str(e)}")
-    # Fallback values in case of error - these should match your chart of accounts
-    ACCOUNTS_RECEIVABLE_ID = "1100-0001"  # Accounts Receivable
-    ACCOUNTS_PAYABLE_ID = "2100-0001"     # Accounts Payable
-    SALES_REVENUE_ID = "4000-0001"        # Sales Revenue
-    COGS_ID = "5000-0001"                 # Cost of Goods Sold
-    INVENTORY_ASSET_ID = "1200-0001"      # Inventory Asset
+# Initialize system accounts with fallback values
+system_accounts = get_system_accounts()  # Don't pass uid during module initialization
+ACCOUNTS_RECEIVABLE_ID = system_accounts['ACCOUNTS_RECEIVABLE_ID']
+SALES_REVENUE_ID = system_accounts['SALES_REVENUE_ID']
+
+def get_current_system_accounts():
+    """Get current system accounts for the authenticated user"""
+    uid = get_user_id()
+    if uid:
+        return get_system_accounts(uid)
+    return system_accounts
 
 def deep_update(original: Dict, update: Dict) -> None:
     """Recursively update nested dictionaries"""
@@ -69,31 +70,127 @@ def deep_update(original: Dict, update: Dict) -> None:
         else:
             original[key] = value
 
-def load_estimates() -> Dict:
+def load_estimates(uid: str = None) -> Dict:
     """Load estimates data from JSON file"""
     try:
-        if os.path.exists(ESTIMATES_FILE):
-            with open(ESTIMATES_FILE, 'r') as f:
-                return json.load(f)
+        if not uid:
+            return {
+                'estimates': [], 
+                'summary': EstimatesSummary().to_dict(),
+                'metadata': {
+                    'lastUpdated': datetime.utcnow().isoformat(),
+                    'createdAt': datetime.utcnow().isoformat()
+                }
+            }
+            
+        file_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
+            'data', 
+            uid, 
+            'estimates.json'
+        )
+        
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                # Ensure all required fields exist
+                if 'metadata' not in data:
+                    data['metadata'] = {
+                        'lastUpdated': datetime.utcnow().isoformat(),
+                        'createdAt': datetime.utcnow().isoformat()
+                    }
+                if 'summary' not in data:
+                    data['summary'] = EstimatesSummary().to_dict()
+                if 'estimates' not in data:
+                    data['estimates'] = []
+                return data
+                
+        # If file doesn't exist, return default structure
+        return {
+            'estimates': [],
+            'summary': EstimatesSummary().to_dict(),
+            'metadata': {
+                'lastUpdated': datetime.utcnow().isoformat(),
+                'createdAt': datetime.utcnow().isoformat()
+            }
+        }
     except Exception as e:
         print(f"Error loading estimates data: {str(e)}")
-    return {'estimates': [], 'summary': {}}
+        return {
+            'estimates': [],
+            'summary': EstimatesSummary().to_dict(),
+            'metadata': {
+                'lastUpdated': datetime.utcnow().isoformat(),
+                'createdAt': datetime.utcnow().isoformat()
+            }
+        }
 
-def save_estimates(data: Dict) -> bool:
+def save_estimates(uid: str, data: Dict) -> None:
     """Save estimates data to JSON file"""
     try:
-        with open(ESTIMATES_FILE, 'w') as f:
+        # Update summary before saving
+        summary = update_summary(data['estimates'])
+        data['summary'] = summary.to_dict()
+        data['metadata']['lastUpdated'] = datetime.utcnow().isoformat()
+        
+        file_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
+            'data', 
+            uid, 
+            'estimates.json'
+        )
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Save to file
+        with open(file_path, 'w') as f:
             json.dump(data, f, indent=2)
-        return True
+            
     except Exception as e:
         print(f"Error saving estimates data: {str(e)}")
-        return False
+        raise
 
 def update_summary(estimates: List[Dict]) -> EstimatesSummary:
     """Update estimates summary information"""
     summary = EstimatesSummary()
-    summary.total_count = len(estimates)
-    summary.total_amount = sum(float(est.get('total_amount', 0)) for est in estimates)
+    current_time = datetime.now()
+    
+    for estimate in estimates:
+        # Skip void estimates in amount calculations
+        if estimate['status'] == 'void':
+            summary.void_count += 1
+            continue
+            
+        summary.total_count += 1
+        amount = float(estimate.get('total_amount', 0))
+        
+        # Update counts and amounts based on status
+        if estimate['status'] == 'draft':
+            summary.draft_count += 1
+            summary.draft_amount += amount
+        elif estimate['status'] == 'sent':
+            summary.sent_count += 1
+            summary.sent_amount += amount
+        elif estimate['status'] == 'accepted':
+            summary.accepted_count += 1
+            summary.accepted_amount += amount
+        elif estimate['status'] == 'declined':
+            summary.declined_count += 1
+            summary.declined_amount += amount
+        elif estimate['status'] == 'converted':
+            summary.converted_count += 1
+            summary.converted_amount += amount
+            
+        # Check for expired estimates (only for non-final statuses)
+        if 'expiry_date' in estimate:
+            expiry_date = datetime.fromisoformat(estimate['expiry_date'])
+            if expiry_date < current_time and estimate['status'] not in ['accepted', 'declined', 'converted', 'void']:
+                summary.expired_count += 1
+                summary.expired_amount += amount
+        
+        summary.total_amount += amount
+    
     return summary
 
 def get_next_estimate_number() -> str:
@@ -101,7 +198,7 @@ def get_next_estimate_number() -> str:
     data = load_estimates()
     estimates = data.get('estimates', [])
     if not estimates:
-        return "EST-2024-001"
+        return "EST-2025-001"
     
     current_year = datetime.now().year
     year_estimates = [est for est in estimates if est['estimate_no'].startswith(f"EST-{current_year}")]
@@ -123,518 +220,490 @@ def is_id_unique(id: str, estimates: List[Dict]) -> bool:
     """Check if an ID is unique among existing estimates"""
     return not any(est.get('id') == id for est in estimates)
 
-def get_preferred_payment_terms():
-    """Get default payment terms"""
-    return "due_on_receipt"
-
-def calculate_due_date(invoice_date, payment_terms):
-    """Calculate due date based on payment terms"""
-    return invoice_date  # For now, just return same date for due_on_receipt
-
-def create_estimate_transaction(estimate_data: Dict, sub_type: str = 'estimate_draft') -> None:
-    """Create a transaction record for an estimate"""
+def calculate_expiry_date(estimate_date: str, expiry_terms: str = 'net_30') -> str:
+    """Calculate expiry date based on estimate date and expiry terms"""
     try:
-        # Calculate total amount
-        total_amount = sum(float(product['price']) * float(product['quantity']) 
-                         for product in estimate_data.get('products', []))
-
-        # Create transaction
-        transaction_data = {
-            'date': estimate_data['estimate_date'],
-            'description': f"Estimate {estimate_data['estimate_no']} created",
-            'transaction_type': TransactionType.ESTIMATE.value,
-            'sub_type': sub_type,
-            'reference_type': 'estimate',
-            'reference_id': estimate_data['id'],
-            'status': 'draft',
-            'customer_name': estimate_data['customer_name'],
-            'products': estimate_data['products'],
-            'entries': [],  # No accounting entries for estimates as they don't affect the books
-            'amount': total_amount
-        }
+        date = datetime.strptime(estimate_date, '%Y-%m-%d')
         
-        create_transaction_direct(transaction_data)
+        if expiry_terms == 'due_on_receipt':
+            return estimate_date
+        elif expiry_terms == 'net_15':
+            date = date + timedelta(days=15)
+        elif expiry_terms == 'net_30':
+            date = date + timedelta(days=30)
+        elif expiry_terms == 'net_60':
+            date = date + timedelta(days=60)
+        elif expiry_terms == 'custom':
+            return estimate_date
         
+        return date.strftime('%Y-%m-%d')
     except Exception as e:
-        print(f"Error creating estimate transaction: {str(e)}")
-        raise
+        print(f"Error calculating expiry date: {str(e)}")
+        return (datetime.strptime(estimate_date, '%Y-%m-%d') + 
+                timedelta(days=30)).strftime('%Y-%m-%d')
 
-def update_estimate_transaction(estimate_data: Dict, sub_type: str) -> None:
-    """Update the transaction record for an estimate"""
+def validate_account_id(account_id: str, account_type: str) -> str:
+    """Validate account ID exists and is of correct type. Returns default if invalid."""
     try:
-        # Load transactions
-        transactions_data = load_transactions()
-        transactions = transactions_data.get('transactions', [])
+        accounts = load_chart_of_accounts().get('accounts', [])
+        account = next((acc for acc in accounts if acc['id'] == account_id), None)
         
-        # Find the estimate's transaction
-        transaction_index = None
-        for i, txn in enumerate(transactions):
-            if (txn.get('reference_type') == 'estimate' and 
-                txn.get('reference_id') == estimate_data['id']):
-                transaction_index = i
-                break
-        
-        if transaction_index is not None:
-            # Update transaction
-            transaction = transactions[transaction_index]
-            transaction['sub_type'] = sub_type
-            transaction['description'] = f"Estimate {estimate_data['estimate_no']} updated"
-            transaction['amount'] = sum(float(product['price']) * float(product['quantity']) 
-                                     for product in estimate_data.get('products', []))
-            transaction['products'] = estimate_data['products']
-            transaction['updated_at'] = datetime.utcnow().isoformat()
-            
-            # Save changes
-            save_transactions(transactions_data)
+        if account:
+            if account_type == 'income' and account['accountType'] in ['Income', 'Revenue']:
+                return account_id
+            elif account_type == 'receivable' and account['accountType'] == 'Accounts Receivable':
+                return account_id
+            elif account_type == 'payable' and account['accountType'] == 'Accounts Payable':
+                return account_id
+            elif account_type == 'asset' and account['accountType'] in ['Asset', 'Cash', 'Bank']:
+                return account_id
+                
+        # Return default based on type
+        if account_type == 'income':
+            return SALES_REVENUE_ID
+        elif account_type == 'receivable':
+            return ACCOUNTS_RECEIVABLE_ID
             
     except Exception as e:
-        print(f"Error updating estimate transaction: {str(e)}")
-        raise
-
-def delete_estimate_transaction(estimate_id: str) -> None:
-    """Delete the transaction record for an estimate"""
-    try:
-        # Load transactions
-        transactions_data = load_transactions()
-        transactions = transactions_data.get('transactions', [])
-        
-        # Find and remove the estimate's transaction
-        transaction_index = None
-        for i, txn in enumerate(transactions):
-            if (txn.get('reference_type') == 'estimate' and 
-                txn.get('reference_id') == estimate_id):
-                transaction_index = i
-                break
-        
-        if transaction_index is not None:
-            transactions.pop(transaction_index)
-            save_transactions(transactions_data)
-            
-    except Exception as e:
-        print(f"Error deleting estimate transaction: {str(e)}")
-        raise
+        print(f"Error validating account ID: {str(e)}")
+        return SALES_REVENUE_ID if account_type == 'income' else ACCOUNTS_RECEIVABLE_ID
 
 # Interface Routes
 @estimates_bp.route('/status_types', methods=['GET'])
 def get_status_types():
     """Get all valid estimate status types"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
     return jsonify(ESTIMATE_STATUSES)
 
 @estimates_bp.route('/next_number', methods=['GET'])
 def get_next_number():
     """Get the next available estimate number"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
     return jsonify({'estimate_no': get_next_estimate_number()})
 
 # Operations Routes
 @estimates_bp.route('/create_estimate', methods=['POST'])
 def create_estimate():
     """Create a new estimate"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = request.get_json()
         
-        # Load products data
-        products_data = load_products()
-        products_map = {p['id']: p for p in products_data.get('products', [])}
-        
         # Generate estimate ID and number
         estimate_id = generate_estimate_id()
-        while not is_id_unique(estimate_id, load_estimates().get('estimates', [])):
-            estimate_id = generate_estimate_id()
-            
-        data['id'] = estimate_id
-        data['estimate_no'] = get_next_estimate_number()
+        estimate_no = get_next_estimate_number()
         
         # Set dates
-        data['estimate_date'] = data.get('estimate_date', datetime.utcnow().date().isoformat())
-        data['expiry_date'] = data.get('expiry_date') or calculate_due_date(data.get('estimate_date'), 'net_30')
-        data['created_at'] = datetime.utcnow().date().isoformat()
-        data['updated_at'] = data['created_at']
-        data['status'] = data.get('status', 'draft')
-        
-        # Process products with full product info
-        processed_products = []
-        for product in data.get('products', []):
-            # Get full product info if ID exists
-            product_info = products_map.get(product.get('id'))
-            
-            if product_info:
-                # Use existing product info
-                estimate_product = {
-                    'id': product_info['id'],
-                    'name': product_info['name'],
-                    'description': product_info.get('description', ''),  
-                    'price': float(product.get('price', product_info['unit_price'])),
-                    'cost_price': float(product_info.get('cost_price', product_info.get('cost_price', 0))),
-                    'quantity': float(product.get('quantity', 1)),
-                    'type': product_info['type'],
-                    'sell_enabled': product_info['sell_enabled'],
-                    'purchase_enabled': product_info['purchase_enabled'],
-                    'income_account_id': product_info.get('income_account_id'),
-                    'expense_account_id': product_info.get('expense_account_id')
-                }
-                
-                # Add inventory info if present
-                if 'inventory_info' in product_info:
-                    estimate_product['inventory_info'] = product_info['inventory_info']
-            else:
-                # Handle product without ID (new product)
-                product_type = product.get('type', 'service')
-                estimate_product = {
-                    'id': product.get('id', ''),
-                    'name': product['name'],
-                    'description': product.get('description', ''),
-                    'price': float(product.get('price', 0)),
-                    'cost_price': float(product.get('cost_price', 0)),
-                    'quantity': float(product.get('quantity', 1)),
-                    'type': product_type,
-                    'sell_enabled': product.get('sell_enabled', True),
-                    'purchase_enabled': product.get('purchase_enabled', False),
-                    'income_account_id': product.get('income_account_id', SALES_REVENUE_ID),
-                    'expense_account_id': COGS_ID if product_type == 'inventory_item' else None
-                }
-                
-            processed_products.append(estimate_product)
-            
-        data['products'] = processed_products
-        
-        # Create estimate object and validate
-        estimate = Estimate.from_dict(data)
+        current_time = datetime.utcnow().isoformat()
+        estimate_date = data.get('estimate_date', current_time)
+        payment_terms = data.get('payment_terms', 'net_30')  # Changed default to match invoice default
+        expiry_date = calculate_expiry_date(estimate_date, payment_terms)
+
+        # Create estimate instance
+        estimate = Estimate(
+            id=estimate_id,
+            estimate_no=estimate_no,
+            estimate_date=estimate_date,
+            expiry_date=expiry_date,
+            customer_name=data['customer_name'],
+            status='draft',
+            line_items=data['line_items'],
+            payment_terms=payment_terms,
+            customer_id=data.get('customer_id'),
+            notes=data.get('notes'),
+            terms_conditions=data.get('terms_conditions'),
+            created_at=current_time,
+            updated_at=current_time
+        )
         
         # Save estimate
-        estimates_data = load_estimates()
-        estimates_data['estimates'].append(estimate.to_dict())
-        
-        # Update summary
-        estimates_data['summary'] = update_summary(estimates_data['estimates']).to_dict()
-        
-        create_estimate_transaction(data)
-        
-        if not save_estimates(estimates_data):
-            return jsonify({'message': 'Failed to save estimate'}), 500
+        estimate.save(uid)
             
         return jsonify(estimate.to_dict()), 201
         
     except Exception as e:
-        return jsonify({'message': f'Error creating estimate: {str(e)}'}), 500
+        print(f"Error in create_estimate: {str(e)}")
+        return jsonify({'error': str(e)}), 400
 
-@estimates_bp.route('/update_estimate/<string:id>', methods=['PATCH'])
+@estimates_bp.route('/update_estimate/<id>', methods=['PUT'])
 def update_estimate(id):
     """Update an estimate"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
         data = request.get_json()
         
-        # Load estimate
-        estimates_data = load_estimates()
-        estimate_index = None
-        estimate = None
+        # Load all estimates
+        estimates_data = load_estimates(uid)
         
-        for i, est in enumerate(estimates_data['estimates']):
+        # Get the estimates list from the data structure
+        if isinstance(estimates_data, dict) and 'estimates' in estimates_data:
+            estimates = estimates_data['estimates']
+        else:
+            return jsonify({'error': 'Invalid estimates data structure'}), 500
+        
+        # Find the estimate to update
+        estimate_index = None
+        for i, est in enumerate(estimates):
             if est['id'] == id:
                 estimate_index = i
-                estimate = est
                 break
                 
-        if estimate is None:
-            return jsonify({'message': 'Estimate not found'}), 404
+        if estimate_index is None:
+            return jsonify({'error': 'Estimate not found'}), 404
             
-        # Validate product account IDs in update data
-        if 'products' in data:
-            for product in data['products']:
-                # Validate income account ID
-                product['income_account_id'] = validate_account_id(
-                    product.get('income_account_id', SALES_REVENUE_ID),
-                    'income'
-                )
-                
-                # If it's an inventory item, validate expense account ID
-                if product.get('type') == 'inventory_item':
-                    product['expense_account_id'] = validate_account_id(
-                        product.get('expense_account_id', COGS_ID),
-                        'expense'
-                    )
+        # Get current estimate
+        current_estimate = estimates[estimate_index]
         
-        # Update estimate
-        data['updated_at'] = datetime.utcnow().date().isoformat()
-        deep_update(estimate, data)
+        # Validate status
+        if current_estimate['status'] not in ['draft', 'sent']:
+            return jsonify({'error': 'Cannot update an accepted, declined, expired, void, or converted estimate'}), 400
         
-        # Validate updated estimate
-        updated_estimate = Estimate.from_dict(estimate)
-        estimates_data['estimates'][estimate_index] = updated_estimate.to_dict()
+        # Update estimate using dictionary merge
+        updated_estimate = {**current_estimate, **data}
+        updated_estimate['updated_at'] = datetime.utcnow().isoformat()
         
-        # Update summary
-        estimates_data['summary'] = update_summary(estimates_data['estimates']).to_dict()
+        # Recalculate expiry date if estimate_date or payment_terms changed
+        if 'estimate_date' in data or 'payment_terms' in data:
+            updated_estimate['expiry_date'] = calculate_expiry_date(
+                updated_estimate.get('estimate_date', current_estimate['estimate_date']),
+                updated_estimate.get('payment_terms', current_estimate['payment_terms'])
+            )
         
-        # Pass the full estimate data to update_estimate_transaction
-        update_estimate_transaction(updated_estimate.to_dict(), data.get('status', 'estimate_updated'))
+        # Update estimate in list
+        estimates[estimate_index] = updated_estimate
         
-        if not save_estimates(estimates_data):
-            return jsonify({'message': 'Failed to save estimate'}), 500
-            
-        return jsonify(updated_estimate.to_dict())
+        # Save updated estimates
+        estimates_data['estimates'] = estimates
+        save_estimates(uid, estimates_data)
+        
+        return jsonify(updated_estimate), 200
         
     except Exception as e:
-        return jsonify({'message': f'Error updating estimate: {str(e)}'}), 500
-
-@estimates_bp.route('/list_estimates', methods=['GET'])
-def list_estimates():
-    """Get all estimates with optional filters"""
-    try:
-        # Load data
-        data = load_estimates()
-        estimates = data.get('estimates', [])
-        
-        # Apply filters
-        status = request.args.get('status')
-        search = request.args.get('search', '').lower()
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
-        
-        filtered_estimates = estimates
-        
-        if status and status != 'All':
-            filtered_estimates = [est for est in filtered_estimates if est['status'] == status]
-            
-        if search:
-            filtered_estimates = [
-                est for est in filtered_estimates
-                if search in est['customer_name'].lower() or
-                   search in est['estimate_no'].lower()
-            ]
-            
-        if date_from:
-            filtered_estimates = [
-                est for est in filtered_estimates
-                if est['estimate_date'] >= date_from
-            ]
-            
-        if date_to:
-            filtered_estimates = [
-                est for est in filtered_estimates
-                if est['estimate_date'] <= date_to
-            ]
-        
-        # Update summary for filtered results
-        summary = update_summary(filtered_estimates)
-        
-        return jsonify({
-            'estimates': filtered_estimates,
-            'summary': summary.to_dict()
-        })
-
-    except Exception as e:
+        print(f"Error in update_estimate: {str(e)}")
         return jsonify({'error': str(e)}), 400
 
 @estimates_bp.route('/get_estimate/<id>', methods=['GET'])
 def get_estimate(id):
     """Get estimate by ID"""
-    try:
-        data = load_estimates()
-        estimates = data.get('estimates', [])
-        
-        estimate = next((est for est in estimates if est['id'] == id), None)
-        if estimate:
-            return jsonify(estimate)
-        else:
-            return jsonify({'error': 'Estimate not found'}), 404
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
 
+    try:
+        estimate = Estimate.get_by_id(uid, id)
+        if not estimate:
+            return jsonify({'error': 'Estimate not found'}), 404
+        return jsonify(estimate.to_dict())
     except Exception as e:
+        print(f"Error in get_estimate: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+
+@estimates_bp.route('/list_estimates', methods=['GET'])
+def list_estimates():
+    """Get all estimates with optional filters"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        estimates = Estimate.get_all(uid)
+        
+        # Apply filters if provided
+        status = request.args.get('status')
+        if status:
+            estimates = [est for est in estimates if est.status == status]
+            
+        customer = request.args.get('customer')
+        if customer:
+            estimates = [est for est in estimates if customer.lower() in est.customer_name.lower()]
+            
+        # Convert to dict for response
+        estimates_dict = [est.to_dict() for est in estimates]
+        
+        return jsonify({'estimates': estimates_dict})
+    except Exception as e:
+        print(f"Error in list_estimates: {str(e)}")
         return jsonify({'error': str(e)}), 400
 
 @estimates_bp.route('/delete_estimate/<id>', methods=['DELETE'])
 def delete_estimate(id):
     """Delete an estimate"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        # Load current data
-        data_store = load_estimates()
-        estimates = data_store.get('estimates', [])
-        
-        # Find estimate
-        estimate_index = next((i for i, est in enumerate(estimates) if est['id'] == id), None)
-        if estimate_index is None:
+        estimate = Estimate.get_by_id(uid, id)
+        if not estimate:
             return jsonify({'error': 'Estimate not found'}), 404
-
-        # Remove estimate
-        estimates.pop(estimate_index)
-        data_store['estimates'] = estimates
-        data_store['summary'] = update_summary(estimates).to_dict()
+            
+        if estimate.status not in ['draft', 'void', 'declined', 'expired']:
+            return jsonify({'error': 'Only draft, void, declined, or expired estimates can be deleted'}), 400
+            
+        # Delete estimate
+        estimate.delete(uid)
         
-        delete_estimate_transaction(id)
-        
-        if save_estimates(data_store):
-            return '', 204
-        else:
-            return jsonify({'error': 'Failed to save changes'}), 500
-
+        return jsonify({'message': 'Estimate deleted successfully'})
     except Exception as e:
+        print(f"Error in delete_estimate: {str(e)}")
         return jsonify({'error': str(e)}), 400
 
-@estimates_bp.route('/convert_to_invoice/<string:id>', methods=['POST'])
-def convert_to_invoice(id):
-    """Convert an estimate to an invoice"""
+@estimates_bp.route('/void/<id>', methods=['POST'])
+def void_estimate(id):
+    """Void an estimate"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     try:
-        # Load estimate
-        estimates_data = load_estimates()
-        estimate = next((est for est in estimates_data['estimates'] if est['id'] == id), None)
+        data = request.get_json()
+        void_reason = data.get('void_reason', '')
         
-        if estimate is None:
-            return jsonify({'message': 'Estimate not found'}), 404
+        estimate = Estimate.get_by_id(uid, id)
+        if not estimate:
+            return jsonify({'error': 'Estimate not found'}), 404
             
-        if estimate.get('status') == 'converted':
-            return jsonify({'message': 'Estimate already converted to invoice'}), 400
+        if estimate.status not in ['draft', 'sent']:
+            return jsonify({'error': 'Only draft or sent estimates can be voided'}), 400
             
-        # Create invoice data
+        estimate.status = 'void'
+        estimate.void_reason = void_reason
+        estimate.voided_at = datetime.utcnow().isoformat() 
+        estimate.save(uid)
+        
+        return jsonify(estimate.to_dict()), 200
+    except Exception as e:
+        print(f"Error in void_estimate: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# @invoices_bp.route('/post/<id>', methods=['POST'])
+# def post_invoice(id):
+#     """Post an invoice, making it final"""
+#     uid = get_user_id()
+#     if not uid:
+#         return jsonify({'error': 'Unauthorized'}), 401
+
+#     try:
+#         invoice = Invoice.get_by_id(uid, id)
+#         if not invoice:
+#             return jsonify({'error': 'Invoice not found'}), 404
+            
+#         if invoice.status != 'draft':
+#             return jsonify({'error': 'Only draft invoices can be posted'}), 400
+            
+#         # Update status and save
+#         invoice.status = 'posted'
+#         invoice.save(uid)
+        
+#         # Update transaction
+#         update_invoice_transaction(invoice.to_dict(), 'invoice_posted')
+        
+#         return jsonify(invoice.to_dict()), 200
+        
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+
+@estimates_bp.route('/send/<id>', methods=['POST'])
+def send_estimate(id):
+    """Mark estimate as sent to customer"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        estimate = Estimate.get_by_id(uid, id)
+        if not estimate:
+            return jsonify({'error': 'Estimate not found'}), 404
+            
+        if estimate.status not in ['draft']:
+            return jsonify({'error': 'Only draft estimates can be sent'}), 400
+            
+        # Update estimate
+        estimate.status = 'sent'
+        estimate.sent_at = datetime.utcnow().isoformat()
+        estimate.save(uid)
+        return jsonify(estimate.to_dict()), 200
+
+    except Exception as e:
+        print(f"Error in send_estimate: {str(e)}")
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+
+@estimates_bp.route('/convert_to_invoice/<id>', methods=['POST'])
+def convert_to_invoice(id):
+    """Convert an accepted estimate to an invoice"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        # Load estimate data
+        estimate = Estimate.get_by_id(uid, id)
+        if not estimate:
+            return jsonify({'error': 'Estimate not found'}), 404
+
+        # Verify estimate is in accepted status
+        if estimate.status != 'accepted':
+            return jsonify({'error': 'Only accepted estimates can be converted to invoices'}), 400
+
+        # Check if already converted
+        if hasattr(estimate, 'converted_to_invoice') and estimate.converted_to_invoice:
+            return jsonify({'error': 'Estimate has already been converted to invoice'}), 400
+
+        # Get latest customer data
+        from app.customers.models import Customer
+        customer = Customer.get_by_id(uid, estimate.customer_id)
+        if not customer:
+            return jsonify({'error': 'Customer not found'}), 404
+
+        # Prepare invoice data
+        now = datetime.utcnow().isoformat()
         invoice_data = {
-            'customer_name': estimate['customer_name'],
-            'customer_id': estimate.get('customer_id'),
-            'products': [
-                {
-                    'id': product.get('id', ''),
-                    'name': product['name'],
-                    'description': product.get('description', ''),
-                    'price': float(product['price']),
-                    'cost_price': float(product.get('cost_price', 0)),
-                    'quantity': float(product['quantity']),
-                    'type': product.get('type', ''),
-                    'sell_enabled': product.get('sell_enabled', True),
-                    'purchase_enabled': product.get('purchase_enabled', False),
-                    'income_account_id': product.get('income_account_id'),
-                    'expense_account_id': product.get('expense_account_id')
-                }
-                for product in estimate['products']
-            ],
-            'payment_terms': estimate.get('payment_terms', 'due_on_receipt'),
-            'status': 'draft',
-            'payments': [],
-            'last_payment_date': None
-        }
-        
-        # Calculate total amount
-        total_amount = sum(
-            float(product['price']) * float(product['quantity'])
-            for product in invoice_data['products']
-        )
-        invoice_data['total_amount'] = total_amount
-        invoice_data['balance_due'] = total_amount
-        
-        # Set dates
-        invoice_date = datetime.utcnow().date().isoformat()
-        invoice_data['invoice_date'] = invoice_date
-        invoice_data['due_date'] = calculate_due_date(invoice_date, invoice_data['payment_terms'])
-        
-        # Load invoices
-        invoices_data = load_invoices()
-        
-        # Generate invoice ID and number
-        invoice_data['id'] = generate_invoice_id()
-        while any(inv.get('id') == invoice_data['id'] for inv in invoices_data.get('invoices', [])):
-            invoice_data['id'] = generate_invoice_id()
-            
-        invoice_data['invoice_no'] = get_next_invoice_number()
-        invoice_data['created_at'] = invoice_date
-        invoice_data['updated_at'] = invoice_date
-        
-        # Add conversion info
-        invoice_data['converted_from_estimate'] = {
-            'id': estimate['id'],
-            'estimate_no': estimate['estimate_no'],
-            'conversion_date': invoice_date
-        }
-        
-        # Update estimate status and add conversion info
-        estimate['status'] = 'converted'
-        estimate['updated_at'] = invoice_date
-        estimate['conversion_info'] = {
-            'invoice_id': invoice_data['id'],
-            'invoice_no': invoice_data['invoice_no'],
-            'conversion_date': invoice_date
-        }
-        
-        # Update estimate transaction to mark as converted
-        update_estimate_transaction(estimate, 'estimate_converted')
-        
-        # Save estimate changes
-        if not save_estimates(estimates_data):
-            return jsonify({'message': 'Failed to update estimate status'}), 500
-            
-        # Create invoice
-        invoices_data['invoices'].append(invoice_data)
-        
-        # Update invoice summary
-        invoices_data['summary'] = update_invoice_summary(invoices_data['invoices']).to_dict()
-        
-        if not save_invoices(invoices_data):
-            return jsonify({'message': 'Failed to create invoice'}), 500
-            
-        # Delete estimate transaction since it's now converted
-        delete_estimate_transaction(estimate['id'])
-        
-        # Create transaction for the new invoice
-        products = invoice_data['products']
-        entries = []
-        total_amount = sum(float(p.get('price', 0)) * float(p.get('quantity', 0)) for p in products)
-        total_cost = 0
-        
-        # Add revenue entries
-        entries.extend([
-            {
-                'accountId': ACCOUNTS_RECEIVABLE_ID,
-                'amount': total_amount,
-                'type': 'debit',
-                'description': f"Invoice {invoice_data['invoice_no']} - Revenue"
-            },
-            {
-                'accountId': SALES_REVENUE_ID,
-                'amount': total_amount,
-                'type': 'credit',
-                'description': f"Invoice {invoice_data['invoice_no']} - Revenue"
+            'customer_id': customer.id,
+            'customer_name': f"{customer.first_name} {customer.last_name}",
+            'customer_email': customer.email,
+            'billing_address': customer.billing_address.to_dict(),
+            'shipping_address': customer.shipping_address.to_dict() if customer.shipping_address else customer.billing_address.to_dict(),
+            'line_items': [item.to_dict() for item in estimate.items],
+            'subtotal': estimate.subtotal,
+            'tax_rate': estimate.tax_rate,
+            'tax_amount': estimate.tax_amount,
+            'total_amount': estimate.total_amount,
+            'notes': estimate.notes,
+            'terms': estimate.terms,
+            'currency': estimate.currency,
+            'payment_terms': 'net_30',
+            'reference': f"Converted from Estimate #{estimate.estimate_no}",
+            'converted_from_estimate': {
+                'id': estimate.id,
+                'estimate_no': estimate.estimate_no,
+                'converted_at': now
             }
-        ])
-        
-        # Add COGS entries only for inventory items
-        for product in products:
-            if product.get('type') == 'inventory_item':
-                # Calculate cost amount
-                cost_price = float(product.get('cost_price', 0))
-                quantity = float(product.get('quantity', 0))
-                cost_amount = cost_price * quantity
-                total_cost += cost_amount
-        
-        # Only add COGS entries if there are inventory items
-        if total_cost > 0:
-            entries.extend([
-                {
-                    'accountId': COGS_ID,
-                    'amount': total_cost,
-                    'type': 'debit',
-                    'description': f"Invoice {invoice_data['invoice_no']} - Cost of Goods Sold"
-                },
-                {
-                    'accountId': INVENTORY_ASSET_ID,
-                    'amount': total_cost,
-                    'type': 'credit',
-                    'description': f"Invoice {invoice_data['invoice_no']} - Inventory Reduction"
-                }
-            ])
-        
-        transaction_data = {
-            'date': invoice_data['invoice_date'],
-            'description': f"Invoice {invoice_data['invoice_no']} created from estimate {estimate['estimate_no']}",
-            'transaction_type': TransactionType.INVOICE.value,
-            'sub_type': 'invoice_draft',
-            'reference_type': 'invoice',
-            'reference_id': invoice_data['id'],
-            'status': 'draft',
-            'customer_name': invoice_data['customer_name'],
-            'products': invoice_data['products'],
-            'entries': entries,
-            'amount': total_amount
         }
-        create_transaction_direct(transaction_data)
-            
+
+        # Create invoice through invoices API
+        from app.invoices.routes import create_invoice
+        response = create_invoice()
+        with app.test_request_context(method='POST', data=json.dumps(invoice_data), 
+                                    content_type='application/json'):
+            invoice_response = create_invoice()
+            if invoice_response.status_code != 200:
+                return invoice_response
+
+        new_invoice_data = json.loads(invoice_response.get_data(as_text=True))
+        new_invoice_id = new_invoice_data['id']
+
+        # Update estimate status to converted
+        estimate.status = 'converted'
+        estimate.converted_at = now
+        estimate.converted_to_invoice = new_invoice_id
+        estimate.save()
+
         return jsonify({
             'message': 'Estimate converted to invoice successfully',
-            'invoice': invoice_data
+            'invoice_id': new_invoice_id
+        }), 200
+
+    except Exception as e:
+        print(f"Error in convert_to_invoice: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@estimates_bp.route('/duplicate/<id>', methods=['POST'])
+def duplicate_estimate(id):
+    """Create a copy of an existing estimate"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        # Load original estimate
+        original = Estimate.get_by_id(uid, id)
+        if not original:
+            return jsonify({'error': 'Estimate not found'}), 404
+            
+        # Create new estimate data
+        new_estimate_data = original.to_dict()
+        
+        # Update fields for new estimate
+        new_estimate_data.update({
+            'id': generate_estimate_id(),
+            'estimate_no': get_next_estimate_number(),
+            'estimate_date': datetime.utcnow().isoformat(),
+            'due_date': (datetime.utcnow() + timedelta(days=30)).isoformat(),  # Default 30 days
+            'status': 'draft',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat()
         })
         
+        # Remove fields that shouldn't be copied
+        fields_to_remove = [
+            'sent_at', 
+            'accepted_at', 
+            'declined_at', 
+            'converted_at',
+            'accepted_by',
+            'declined_by',
+            'decline_reason',
+            'converted_to_invoice',
+            'void_reason',
+            'voided_at'
+        ]
+        for field in fields_to_remove:
+            new_estimate_data.pop(field, None)
+            
+        # Create and save new invoice
+        new_estimate = Estimate.from_dict(new_estimate_data)
+        new_estimate.save(uid)
+        
+        return jsonify(new_estimate.to_dict()), 201
+        
     except Exception as e:
-        return jsonify({'message': f'Error converting estimate to invoice: {str(e)}'}), 500
+        print(f"Error in duplicate_estimate: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@estimates_bp.route('/update_summary', methods=['POST'])
+def update_summary_route():
+    """Update estimates summary"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = load_estimates(uid)
+        if not data or 'estimates' not in data:
+            return jsonify({'error': 'No estimates data found'}), 404
+            
+        summary = update_summary(data['estimates'])
+        data['summary'] = summary.to_dict()
+        save_estimates(uid, data)
+        return jsonify(summary.to_dict()), 200
+    except Exception as e:
+        print(f"Error in update_summary_route: {str(e)}")
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 400
+
+@estimates_bp.route('/get_summary', methods=['GET'])
+def get_summary():
+    """Get estimates summary"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        data = load_estimates(uid)
+        if not data or 'estimates' not in data:
+            return jsonify({'error': 'No estimates data found'}), 404
+            
+        summary = update_summary(data['estimates'])
+        return jsonify(summary.to_dict()), 200
+    except Exception as e:
+        print(f"Error in get_summary: {str(e)}")
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 400

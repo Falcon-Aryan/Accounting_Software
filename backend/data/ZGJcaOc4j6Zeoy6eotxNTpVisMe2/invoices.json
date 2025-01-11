@@ -14,5 +14,9 @@
     "void_amount": 0.0,
     "total_receivable": 0.0,
     "total_collected": 0.0
+  },
+  "metadata": {
+    "lastUpdated": "2025-01-11T18:21:06.486976",
+    "createdAt": "2025-01-08T13:22:00.666746"
   }
 }

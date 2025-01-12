@@ -13,7 +13,7 @@ from app.chart_of_accounts.models import Account
 from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions, post_transaction
 from app.chart_of_accounts.routes import load_chart_of_accounts
 from app.products.routes import load_products
-from app.invoices.models import Invoice, get_next_invoice_number
+from app.invoices.models import Invoice
 
 
 def get_user_id():

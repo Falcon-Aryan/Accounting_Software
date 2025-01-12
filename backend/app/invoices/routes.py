@@ -13,6 +13,7 @@ from app.chart_of_accounts.models import Account
 from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions, post_transaction
 from app.chart_of_accounts.routes import load_chart_of_accounts
 from app.products.routes import load_products
+from app.base.base_models import LineItem
 
 def get_user_id():
     """Get the user ID from the Authorization header"""
@@ -104,7 +105,10 @@ def save_invoices(uid: str, data: Dict) -> None:
         # Update summary before saving
         summary = update_summary(data['invoices'])
         data['summary'] = summary.to_dict()
-        data['metadata']['lastUpdated'] = datetime.utcnow().isoformat()
+        data['metadata'] = {
+            'lastUpdated': datetime.utcnow().isoformat(),
+            'createdAt': data.get('metadata', {}).get('createdAt', datetime.utcnow().isoformat())
+        }
         
         file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', uid, 'invoices.json')
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -126,7 +130,7 @@ def update_summary(invoices: List[Dict]) -> InvoicesSummary:
             
         # Get payment info
         total_paid = sum(payment['amount'] for payment in invoice.get('payments', []))
-        balance_due = invoice['total_amount'] - total_paid
+        balance_due = invoice['total'] - total_paid
         
         # Update counts and amounts based on status
         if invoice['status'] == 'draft':
@@ -143,7 +147,7 @@ def update_summary(invoices: List[Dict]) -> InvoicesSummary:
                     summary.overdue_amount += balance_due
         elif invoice['status'] == 'paid':
             summary.paid_count += 1
-            summary.paid_amount += invoice['total_amount']
+            summary.paid_amount += invoice['total']
         elif invoice['status'] == 'void':
             summary.void_count += 1
             summary.void_amount += balance_due
@@ -198,9 +202,9 @@ def check_and_update_status(invoice: Dict) -> None:
     total_paid = sum(payment['amount'] for payment in invoice.get('payments', []))
     
     # Update balance due
-    invoice['balance_due'] = invoice['total_amount'] - total_paid
+    invoice['balance_due'] = invoice['total'] - total_paid
     
-    if total_paid >= invoice['total_amount']:
+    if total_paid >= invoice['total']:
         invoice['status'] = 'paid'
     elif total_paid > 0:
         invoice['status'] = 'partially_paid'
@@ -384,39 +388,54 @@ def create_invoice():
         return jsonify({'error': 'Unauthorized'}), 401
 
     try:
+        # Get request data
         data = request.get_json()
-        
-        # Generate invoice ID and number
-        invoice_id = generate_invoice_id()
-        invoice_no = get_next_invoice_number()
-        
-        # Set dates
-        invoice_date = data.get('invoice_date', datetime.utcnow().isoformat())
-        payment_terms = data.get('payment_terms', 'due_on_receipt')
-        due_date = calculate_due_date(invoice_date, payment_terms)
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
 
-        # Create invoice instance
+        # Generate invoice ID
+        data['id'] = generate_invoice_id()
+        
+        line_items = [LineItem(
+            product_id=item['product_id'],
+            description=item['description'],
+            unit_price=float(item['unit_price']),
+            quantity=float(item['quantity'])
+        ) for item in data['line_items']]
+
+        # Create new invoice instance
         invoice = Invoice(
-            id=invoice_id,
-            invoice_no=invoice_no,
-            invoice_date=invoice_date,
-            due_date=due_date,
+            id=data['id'],
+            customer_id=data['customer_id'],
             customer_name=data['customer_name'],
-            status='draft',
-            line_items=data['line_items'],
-            payment_terms=data.get('payment_terms', 'due_on_receipt')
+            date=data['date'],
+            due_date=data['due_date'],
+            payment_terms=data['payment_terms'],
+            status=data['status'],
+            line_items=line_items,
+            subtotal=data['subtotal'],
+            total=data['total'],
+            balance_due=data['balance_due'],
+            notes=data.get('notes', ''),
+            created_at=data['created_at'],
+            updated_at=data['updated_at']
         )
         
-        # Save invoice
-        invoice.save(uid)
+        invoices_data = load_invoices(uid)
+        invoices = invoices_data.get('invoices', [])
         
-        # Create transaction record
-        create_invoice_transaction(invoice.to_dict(), 'invoice_draft')
+        # Add new invoice
+        invoice_dict = invoice.to_dict()
+        invoices.append(invoice_dict)
         
-        return jsonify(invoice.to_dict()), 201
+        # Save updated invoices
+        save_invoices(uid, {'invoices': invoices})
+        
+        return jsonify(invoice_dict), 200
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        print(f"Error creating invoice: {e}")
+        return jsonify({"error": str(e)}), 400
 
 @invoices_bp.route('/update_invoice/<id>', methods=['PUT'])
 def update_invoice(id):
@@ -497,7 +516,9 @@ def list_invoices():
         return jsonify({'error': 'Unauthorized'}), 401
 
     try:
+        print(f"UID: {uid}")  
         invoices = Invoice.get_all(uid)
+        print(f"Raw invoices: {invoices}")
         
         # Apply filters if provided
         status = request.args.get('status')
@@ -510,9 +531,11 @@ def list_invoices():
             
         # Convert to dict for response
         invoices_dict = [inv.to_dict() for inv in invoices]
-        
+        print(f"Response invoices: {invoices_dict}")  
+
         return jsonify({'invoices': invoices_dict})
     except Exception as e:
+        print(f"Error in list_invoices: {str(e)}")  
         return jsonify({'error': str(e)}), 400
 
 @invoices_bp.route('/delete_invoice/<id>', methods=['DELETE'])
@@ -674,11 +697,7 @@ def duplicate_invoice(id):
         new_invoice_data.update({
             'id': generate_invoice_id(),
             'invoice_no': get_next_invoice_number(),
-            'invoice_date': datetime.utcnow().isoformat(),
-            'due_date': (datetime.utcnow() + timedelta(days=30)).isoformat(),  # Default 30 days
-            'status': 'draft',
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat()
+            'status': 'draft'
         })
         
         # Remove fields that shouldn't be copied

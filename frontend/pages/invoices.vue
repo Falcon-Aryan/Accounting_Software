@@ -273,23 +273,55 @@ async function getIdToken() {
   return user.getIdToken()
 }
 
+const mapInvoiceToBaseDocument = (invoice) => {
+  const now = new Date().toISOString()
+  return {
+    ...invoice,
+    created_at: now,
+    updated_at: now,
+    date: invoice.invoice_date || invoice.date,
+    total: invoice.total_amount || invoice.total,
+    balance: invoice.balance_due || invoice.total,
+    line_items: (invoice.line_items || []).map(item => ({
+      ...item,
+      unit_price: item.price || item.unit_price,
+      total: (item.quantity * (item.price || item.unit_price))
+    }))
+  }
+}
+
+const mapBaseDocumentToInvoice = (doc) => {
+  return {
+    ...doc,
+    invoice_date: doc.date,
+    total_amount: doc.total,
+    balance_due: doc.balance,
+    line_items: (doc.line_items || []).map(item => ({
+      ...item,
+      price: item.unit_price
+    }))
+  }
+}
+
 // Fetch invoices from the API
 async function fetchInvoices() {
   try {
     isLoading.value = true
     errorMessage.value = ''
     const token = await getIdToken()
-    
+    console.log('Token obtained')
+
     await fetch(`${config.public.apiBase}/api/invoices/update_summary`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`
       }
     })
+    console.log('Summary updated') 
 
     const queryParams = new URLSearchParams()
     if (selectedStatus.value !== 'All') {
-      queryParams.append('status', selectedStatus.value)
+      queryParams.append('status', selectedStatus.value.toLowerCase())
     }
     if (searchQuery.value) {
       queryParams.append('search', searchQuery.value)
@@ -300,6 +332,7 @@ async function fetchInvoices() {
         'Authorization': `Bearer ${token}`
       }
     })
+    console.log('Response status:', response.status)
     
     if (!response.ok) {
       const error = await response.json()
@@ -307,14 +340,13 @@ async function fetchInvoices() {
     }
 
     const data = await response.json()
-    invoices.value = data.invoices
+    console.log('Raw response data:', data)
+
+    invoices.value = data.invoices.map(mapBaseDocumentToInvoice)
+    console.log('Mapped invoices:', invoices.value)
   } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to view invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error fetching invoices:', error)
+    console.error('Error in fetchInvoices:', error)
+    handleError(error)
   } finally {
     isLoading.value = false
   }
@@ -359,13 +391,14 @@ const filteredInvoices = computed(() => {
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     filtered = filtered.filter(inv => 
-      inv.invoice_no.toLowerCase().includes(query) ||
+      inv.id.toLowerCase().includes(query) ||
+      inv.invoice_no?.toLowerCase().includes(query) ||
       inv.customer_name?.toLowerCase().includes(query)
     )
   }
   
   if (selectedStatus.value !== 'All') {
-    filtered = filtered.filter(inv => inv.status === selectedStatus.value)
+    filtered = filtered.filter(inv => inv.status.toLowerCase() === selectedStatus.value.toLowerCase())
   }
   
   return filtered
@@ -408,29 +441,26 @@ function closeEditInvoiceModal() {
 async function handleUpdateInvoice(updatedData) {
   try {
     const token = await getIdToken()
+    const mappedData = mapInvoiceToBaseDocument(updatedData)
+    
     const response = await fetch(`${config.public.apiBase}/api/invoices/update_invoice/${updatedData.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(updatedData)
+      body: JSON.stringify(mappedData)
     })
 
-    const data = await response.json()
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to update invoice')
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to update invoice')
     }
 
     await fetchInvoices()
     closeEditInvoiceModal()
   } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to update invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error updating invoice:', error)
+    handleError(error)
   }
 }
 
@@ -570,29 +600,26 @@ function closeNewInvoiceModal() {
 async function handleCreateInvoice(invoiceData) {
   try {
     const token = await getIdToken()
+    const mappedData = mapInvoiceToBaseDocument(invoiceData)
+    
     const response = await fetch(`${config.public.apiBase}/api/invoices/create_invoice`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(invoiceData)
+      body: JSON.stringify(mappedData)
     })
 
-    const data = await response.json()
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to create invoice')
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to create invoice')
     }
 
     await fetchInvoices()
     closeNewInvoiceModal()
   } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to create invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error creating invoice:', error)
+    handleError(error)
   }
 }
 
@@ -635,6 +662,15 @@ async function handlePaymentRecorded(result) {
       errorMessage.value = error.message
     }
     console.error('Error recording payment:', error)
+  }
+}
+
+function handleError(error) {
+  console.error('Operation failed:', error)
+  if (error.message === 'No authenticated user') {
+    errorMessage.value = 'Please log in to continue'
+  } else {
+    errorMessage.value = error.message || 'An error occurred'
   }
 }
 

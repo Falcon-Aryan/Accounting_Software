@@ -4,7 +4,9 @@ from datetime import datetime
 import os
 import json
 import random
+from ..base.base_models import BaseDocument, LineItem
 from ..products.models import Product
+import traceback
 
 INVOICE_STATUSES = [
     'draft',
@@ -61,55 +63,15 @@ class Payment:
         }
 
 @dataclass
-class InvoiceLineItem:
-    """Represents a line item in an invoice"""
-    product_id: str
-    quantity: float = 1.0
-    unit_price: float = 0.0
-    description: str = ""
-    total: float = 0.0
-
-    def __post_init__(self):
-        """Calculate total after initialization"""
-        self.total = self.unit_price * self.quantity
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'InvoiceLineItem':
-        """Create an InvoiceLineItem instance from a dictionary"""
-        return cls(
-            product_id=data.get('product_id', ''),
-            quantity=float(data.get('quantity', 1.0)),
-            unit_price=float(data.get('unit_price', 0.0)),
-            description=data.get('description', ''),
-            total=float(data.get('total', 0.0))
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert InvoiceLineItem instance to dictionary"""
-        return {
-            'product_id': self.product_id,
-            'quantity': self.quantity,
-            'unit_price': self.unit_price,
-            'description': self.description,
-            'total': self.total
-        }
-
-@dataclass
-class Invoice:
+class Invoice(BaseDocument):
     """Represents an Invoice entry"""
-    id: str
-    invoice_no: str
-    invoice_date: str
-    due_date: str
-    customer_name: str
-    status: str
-    line_items: List[InvoiceLineItem] = field(default_factory=list)
-    total_amount: float = 0.0
+
+    invoice_no: str = field(default_factory=lambda: f"INV-{datetime.utcnow().strftime('%Y%m%d')}-{random.randint(1000,9999)}")
+    invoice_date: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    due_date: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    customer_name: str = ""
     balance_due: float = 0.0
     payments: List[Payment] = field(default_factory=list)
-    payment_terms: str = 'due_on_receipt'
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
     sent_at: Optional[str] = None
     voided_at: Optional[str] = None
     void_reason: Optional[str] = None
@@ -141,7 +103,28 @@ class Invoice:
                     data = json.load(f)
             else:
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                data = {"invoices": [], "metadata": {"lastUpdated": datetime.utcnow().isoformat()}}
+                data = {
+                "invoices": [], 
+                "summary": {
+                    "draft_count": 0,
+                    "sent_count": 0,
+                    "paid_count": 0,
+                    "overdue_count": 0,
+                    "cancelled_count": 0,
+                    "void_count": 0,
+                    "draft_amount": 0.0,
+                    "sent_amount": 0.0,
+                    "paid_amount": 0.0,
+                    "overdue_amount": 0.0,
+                    "void_amount": 0.0,
+                    "total_receivable": 0.0,
+                    "total_collected": 0.0
+                },
+                "metadata": {
+                    "lastUpdated": datetime.utcnow().isoformat(),
+                    "createdAt": datetime.utcnow().isoformat()
+                }
+            }
 
             # Remove existing invoice if it exists
             data['invoices'] = [inv for inv in data['invoices'] if inv['id'] != self.id]
@@ -162,13 +145,33 @@ class Invoice:
         """Get all invoices"""
         try:
             file_path = Invoice.get_user_data_file(uid)
+            print(f"Looking for file at: {file_path}")
+
             if not os.path.exists(file_path):
+                print(f"File does not exist: {file_path}")
                 return []
+
             with open(file_path, 'r') as f:
                 data = json.load(f)
-                return [Invoice.from_dict(invoice_data) for invoice_data in data.get('invoices', [])]
+                print(f"Loaded data: {data}")
+                invoices_data = data.get('invoices', [])
+                print(f"Invoices data: {invoices_data}")
+                
+                invoices = []   
+                for invoice_data in invoices_data:
+                    try:
+                        invoice = Invoice.from_dict(invoice_data)
+                        invoices.append(invoice)
+                    except Exception as e:
+                        print(f"Error converting invoice {invoice_data.get('id')}: {str(e)}")
+                        continue
+            
+            print(f"Converted invoices: {invoices}")
+            return invoices
         except Exception as e:
             print(f"Error loading invoices: {str(e)}")
+            print(f"Error type: {type(e)}")
+            print(f"Error traceback: {traceback.format_exc()}")
             return []
 
     @staticmethod
@@ -207,21 +210,14 @@ class Invoice:
 
     def __post_init__(self):
         """Calculate totals and set timestamps"""
-        if not self.created_at:
-            self.created_at = datetime.utcnow().isoformat()
-        self.updated_at = datetime.utcnow().isoformat()
-
-        # Convert line_items from dict to InvoiceLineItem objects
-        if isinstance(self.line_items, list) and self.line_items and isinstance(self.line_items[0], dict):
-            self.line_items = [InvoiceLineItem(**item) for item in self.line_items]
-
-        # Calculate total amount
-        self.total_amount = sum(item.total for item in self.line_items)
-        self.balance_due = self.total_amount - sum(payment.amount for payment in self.payments)
-
+        super().__post_init__()  # Call parent's post_init first
+        
         # Convert payments from dict to Payment objects
         if isinstance(self.payments, list) and self.payments and isinstance(self.payments[0], dict):
             self.payments = [Payment(**payment) for payment in self.payments]
+
+        # Calculate balance due using BaseDocument's total
+        self.balance_due = self.total - sum(payment.amount for payment in self.payments)
 
         # Set last payment date
         if self.payments:
@@ -230,50 +226,65 @@ class Invoice:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Invoice':
         """Create an Invoice instance from a dictionary"""
-        line_items = [InvoiceLineItem.from_dict(item) for item in data.get('line_items', [])]
-        payments = [Payment.from_dict(p) for p in data.get('payments', [])]
-        
-        return cls(
-            id=data.get('id', ''),
-            invoice_no=data.get('invoice_no', ''),
-            invoice_date=data.get('invoice_date', ''),
-            due_date=data.get('due_date', ''),
-            customer_name=data.get('customer_name', ''),
-            status=data.get('status', 'draft'),
-            line_items=line_items,
-            payment_terms=data.get('payment_terms', 'due_on_receipt'),
-            payments=payments,
-            created_at=data.get('created_at'),
-            updated_at=data.get('updated_at'),
-            sent_at=data.get('sent_at'),
-            voided_at=data.get('voided_at'),
-            void_reason=data.get('void_reason'),
-            last_payment_date=data.get('last_payment_date'),
-            converted_from_estimate=data.get('converted_from_estimate')
-        )
+
+        try:
+            # Handle payments conversion
+            payments = [Payment.from_dict(p) for p in data.get('payments', [])]
+            
+            # Handle line items conversion
+            line_items = [LineItem.from_dict(item) if isinstance(item, dict) else item 
+                        for item in data.get('line_items', [])]
+
+            # Create a copy of the data to avoid modifying the original
+            invoice_data = {
+                'id': data['id'],
+                'customer_id': data['customer_id'],
+                'invoice_no': data.get('invoice_no', ''),
+                'invoice_date': data.get('invoice_date', ''),
+                'due_date': data.get('due_date', ''),
+                'customer_name': data.get('customer_name', ''),
+                'line_items': line_items,
+                'payments': payments,
+                'sent_at': data.get('sent_at'),
+                'voided_at': data.get('voided_at'),
+                'void_reason': data.get('void_reason'),
+                'last_payment_date': data.get('last_payment_date'),
+                'converted_from_estimate': data.get('converted_from_estimate'),
+                'notes': data.get('notes', ''),
+                'created_at': data.get('created_at'),
+                'updated_at': data.get('updated_at'),
+                'status': data.get('status', 'draft'),
+                'payment_terms': data.get('payment_terms', 'net_30'),
+                'subtotal': data.get('subtotal', 0.0),
+                'total': data.get('total', 0.0),
+                'balance_due': data.get('balance_due', 0.0),
+                'date': data.get('date', '')
+            }
+
+            return cls(**invoice_data)
+        except Exception as e:
+            print(f"Error in from_dict: {str(e)}")
+            print(f"Data causing error: {data}")
+            print(traceback.format_exc())
+            raise
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert Invoice instance to dictionary"""
-        return {
-            'id': self.id,
+        base_dict = super().to_dict()
+        invoice_dict = {
             'invoice_no': self.invoice_no,
             'invoice_date': self.invoice_date,
             'due_date': self.due_date,
             'customer_name': self.customer_name,
-            'status': self.status,
-            'line_items': [item.to_dict() for item in self.line_items],
-            'total_amount': self.total_amount,
             'balance_due': self.balance_due,
             'payments': [p.to_dict() for p in self.payments],
-            'payment_terms': self.payment_terms,
-            'created_at': self.created_at,
-            'updated_at': self.updated_at,
             'sent_at': self.sent_at,
             'voided_at': self.voided_at,
             'void_reason': self.void_reason,
             'last_payment_date': self.last_payment_date,
             'converted_from_estimate': self.converted_from_estimate
         }
+        return {**base_dict, **invoice_dict}
 
 @dataclass
 class InvoicesSummary:

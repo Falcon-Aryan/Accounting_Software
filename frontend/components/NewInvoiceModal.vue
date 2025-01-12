@@ -4,6 +4,7 @@
     title="Create New Invoice"
     width="md"
     @close="close"
+    @save="handleSubmit"
   >
     <form @submit.prevent="handleSubmit">
       <!-- Customer Selection -->
@@ -44,7 +45,7 @@
       <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
         <input
-          v-model="form.invoice_date"
+          v-model="form.date"
           type="date"
           required
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
@@ -112,7 +113,7 @@
               </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-              <tr v-for="(product, index) in form.products" :key="index">
+              <tr v-for="(product, index) in form.line_items" :key="index">
                 <td class="px-4 py-4">
                   <select
                     v-model="product.id"
@@ -141,7 +142,7 @@
                 </td>
                 <td class="px-4 py-4">
                   <input
-                    v-model.number="product.price"
+                    v-model.number="product.unit_price"
                     type="number"
                     required
                     step="0.01"
@@ -158,7 +159,7 @@
                   />
                 </td>
                 <td class="px-4 py-4 text-sm text-gray-900">
-                  {{ formatCurrency(product.price * product.quantity) }}
+                  {{ formatCurrency(product.unit_price * product.quantity) }}
                 </td>
                 <td class="px-4 py-4">
                   <button
@@ -227,16 +228,23 @@ const router = useRouter()
 const config = useRuntimeConfig()
 const auth = getAuth()
 
+const isSubmitting = ref(false)
+
 // Reactive state
 const customers = ref([])
 const products = ref([])
 const form = ref({
   customer_name: '',
-  invoice_date: new Date().toISOString().split('T')[0],
+  date: new Date().toISOString().split('T')[0],
   due_date: new Date().toISOString().split('T')[0],
   payment_terms: 'due_on_receipt',
   status: 'draft',
-  products: [{ id: '', description: '', price: '', quantity: 1 }]
+  line_items: [{
+    id: '',
+    description: '',
+    unit_price: '',
+    quantity: 1
+  }]
 })
 
 // Get current user's ID token
@@ -322,26 +330,21 @@ function formatCurrency(amount) {
 }
 
 const calculateTotal = computed(() => {
-  return form.value.products.reduce((sum, product) => sum + (Number(product.price) * Number(product.quantity) || 0), 0)
+  return form.value.line_items.reduce((sum, item) => 
+    sum + (Number(item.unit_price) * Number(item.quantity) || 0), 0)
 })
 
 function addProduct() {
-  form.value.products.push({
+  form.value.line_items.push({
     id: '',
-    name: '',
     description: '',
-    price: 0,
-    quantity: 1,
-    type: '',
-    sell_enabled: false,
-    purchase_enabled: false,
-    income_account_id: '',
-    expense_account_id: ''
+    unit_price: 0,
+    quantity: 1
   })
 }
 
 function removeProduct(index) {
-  form.value.products.splice(index, 1)
+  form.value.line_items.splice(index, 1)
 }
 
 function handleProductSelect(index, productId) {
@@ -352,23 +355,17 @@ function handleProductSelect(index, productId) {
 
   const selectedProduct = products.value.find(p => p.id === productId)
   if (selectedProduct) {
-    form.value.products[index] = {
+    form.value.line_items[index] = {
       id: selectedProduct.id,
-      name: selectedProduct.name,
       description: selectedProduct.description || '',
-      price: selectedProduct.unit_price,
-      quantity: form.value.products[index]?.quantity || 1,
-      type: selectedProduct.type,
-      sell_enabled: selectedProduct.sell_enabled,
-      purchase_enabled: selectedProduct.purchase_enabled,
-      income_account_id: selectedProduct.income_account_id,
-      expense_account_id: selectedProduct.expense_account_id
+      unit_price: selectedProduct.unit_price,
+      quantity: form.value.line_items[index]?.quantity || 1
     }
   }
 }
 
 const updateDueDate = (terms) => {
-  const invoiceDate = new Date(form.value.invoice_date)
+  const invoiceDate = new Date(form.value.date)
   let dueDate = new Date(invoiceDate)
 
   switch (terms) {
@@ -393,7 +390,7 @@ watch(() => form.value.payment_terms, (newTerms) => {
   updateDueDate(newTerms)
 })
 
-watch(() => form.value.invoice_date, (newDate) => {
+watch(() => form.value.date, (newDate) => {
   updateDueDate(form.value.payment_terms)
 })
 
@@ -404,60 +401,89 @@ async function handleSubmit() {
       return
     }
 
+    isSubmitting.value = true
     const customer = customers.value.find(c => 
       `${c.first_name} ${c.last_name}` === form.value.customer_name
     )
 
+    if (!customer?.id) {
+      throw new Error('Please select a valid customer')
+    }
+
     const invoiceData = {
-      customer_id: customer?.id,
+      customer_id: customer.id,
       customer_name: form.value.customer_name,
-      invoice_date: form.value.invoice_date,
+      date: form.value.date,
       due_date: form.value.due_date,
       payment_terms: form.value.payment_terms,
       status: form.value.status,
-      line_items: form.value.products.map(p => ({
+      line_items: form.value.line_items.map(p => ({
         product_id: p.id,
         description: p.description || '',
-        unit_price: Number(p.price),
-        quantity: Number(p.quantity)
+        unit_price: Number(p.unit_price),
+        quantity: Number(p.quantity),
+        total: Number(p.unit_price) * Number(p.quantity)
       })),
-      total_amount: calculateTotal.value
+      subtotal: calculateTotal.value,
+      total: calculateTotal.value,
+      balance_due: calculateTotal.value,
+      notes: '',
     }
-
-    emit('save', invoiceData)
-    close()
+  emit('save', invoiceData)
+  close()
   } catch (error) {
-    console.error('Error preparing invoice data:', error)
+  console.error('Error creating invoice:', error)
+  alert(error.message || 'Failed to create invoice')
+  } finally {
+  isSubmitting.value = false
   }
 }
 
 function close() {
-  resetForm()
+  form.value = {
+    customer_name: '',
+    date: new Date().toISOString().split('T')[0],
+    due_date: new Date().toISOString().split('T')[0],
+    payment_terms: 'due_on_receipt',
+    status: 'draft',
+    line_items: [{
+      id: '',
+      description: '',
+      unit_price: '',
+      quantity: 1
+    }]
+  }
   emit('close')
 }
 
 function resetForm() {
   form.value = {
     customer_name: '',
-    invoice_date: new Date().toISOString().split('T')[0],
+    date: new Date().toISOString().split('T')[0],
     due_date: '',
-    products: [{ id: '', description: '', price: '', quantity: 1 }],
-    status: ''
+    line_items: [{
+      id: '',
+      description: '',
+      unit_price: '',
+      quantity: 1
+    }],
+    status: '',
+    payment_terms: 'due_on_receipt'
   }
 }
 
 // Watch for product changes to update the form
 watch(() => products.value, (newProducts) => {
   if (newProducts.length > 0) {
-    form.value.products.forEach((product, index) => {
+    form.value.line_items.forEach((product, index) => {
       if (product.id) {
         const matchingProduct = newProducts.find(p => p.id === product.id)
         if (matchingProduct) {
-          form.value.products[index] = {
-            ...form.value.products[index],
+          form.value.line_items[index] = {
+            ...form.value.line_items[index],
             name: matchingProduct.name,
             description: matchingProduct.description,
-            price: matchingProduct.unit_price
+            unit_price: matchingProduct.unit_price
           }
         }
       }

@@ -1,0 +1,22 @@
+{
+  "invoices": [],
+  "summary": {
+    "draft_count": 0,
+    "sent_count": 0,
+    "paid_count": 0,
+    "overdue_count": 0,
+    "cancelled_count": 0,
+    "void_count": 0,
+    "draft_amount": 0.0,
+    "sent_amount": 0.0,
+    "paid_amount": 0.0,
+    "overdue_amount": 0.0,
+    "void_amount": 0.0,
+    "total_receivable": 0.0,
+    "total_collected": 0.0
+  },
+  "metadata": {
+    "lastUpdated": "2025-01-12T03:10:30.677266",
+    "createdAt": "2025-01-12T03:06:34.333230"
+  }
+}

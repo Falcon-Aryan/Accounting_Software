@@ -24,54 +24,50 @@
 
         <div v-else class="border-t border-gray-200">
           <dl>
+            <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+              <dt class="text-sm font-medium text-gray-500">ID</dt>
+              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                {{ product.id }}
+              </dd>
+            </div>
             <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
               <dt class="text-sm font-medium text-gray-500">Name</dt>
-              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{{ product.name }}</dd>
+              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                {{ product.name }}
+              </dd>
             </div>
             <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
               <dt class="text-sm font-medium text-gray-500">Type</dt>
               <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                <span :class="getTypeClass">{{ formatType(product.type) }}</span>
+                {{ product.type }}
               </dd>
-            </div>
-            <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-500">SKU</dt>
-              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{{ product.sku || 'N/A' }}</dd>
             </div>
             <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
               <dt class="text-sm font-medium text-gray-500">Description</dt>
-              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{{ product.description || 'No description available' }}</dd>
-            </div>
-            <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-500">Price</dt>
-              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{{ formatCurrency(product.price) }}</dd>
-            </div>
-            <template v-if="product.type === 'inventory_item'">
-              <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt class="text-sm font-medium text-gray-500">Quantity on Hand</dt>
-                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{{ product.quantity_on_hand || 0 }}</dd>
-              </div>
-              <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt class="text-sm font-medium text-gray-500">Reorder Point</dt>
-                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{{ product.reorder_point || 'Not set' }}</dd>
-              </div>
-              <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                <dt class="text-sm font-medium text-gray-500">Purchase Price</dt>
-                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{{ formatCurrency(product.purchase_price) }}</dd>
-              </div>
-            </template>
-            <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-500">Created At</dt>
               <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                {{ formatDate(product.created_at) }}
+                {{ product.description || 'No description available' }}
+              </dd>
+            </div>
+            <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+              <dt class="text-sm font-medium text-gray-500">Sell Price</dt>
+              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                {{ formatCurrency(product.unit_price) }}
               </dd>
             </div>
             <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-500">Last Updated</dt>
-              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                {{ formatDate(product.updated_at) }}
-              </dd>
-            </div>
+                <dt class="text-sm font-medium text-gray-500">Cost</dt>
+                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                  {{ formatCurrency(product.cost_price) }}
+                </dd>
+              </div>
+            <template v-if="product.type === 'inventory_item'">
+              <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                <dt class="text-sm font-medium text-gray-500">Quantity on Hand</dt>
+                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                  {{ product.inventory_info.quantity || 0 }}
+                </dd>
+              </div>
+            </template>
           </dl>
         </div>
       </div>
@@ -82,31 +78,30 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRuntimeConfig, useRoute } from '#app'
+import { initializeApp } from 'firebase/app'
+import { getAuth } from 'firebase/auth'
+import { firebaseConfig } from '../../../config/firebase.config'
+
+definePageMeta({
+  middleware: ['auth']
+})
+
+const app = initializeApp(firebaseConfig)
+const auth = getAuth(app)
+
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
+  }
+  return user.getIdToken()
+}
 
 const config = useRuntimeConfig()
 const route = useRoute()
 const product = ref(null)
 const isLoading = ref(true)
 const error = ref(null)
-
-const getTypeClass = computed(() => {
-  const baseClasses = 'px-2 py-1 text-xs font-medium rounded-full'
-  if (product.value?.type === 'service') {
-    return `${baseClasses} bg-purple-100 text-purple-800`
-  }
-  return `${baseClasses} bg-blue-100 text-blue-800`
-})
-
-const formatType = (type) => {
-  switch (type) {
-    case 'service':
-      return 'Service'
-    case 'inventory_item':
-      return 'Inventory Item'
-    default:
-      return type
-  }
-}
 
 const formatDate = (date) => {
   if (!date) return 'N/A'
@@ -124,18 +119,31 @@ const fetchProduct = async () => {
   try {
     isLoading.value = true
     error.value = null
-    const response = await fetch(`${config.public.apiBase}/api/ProdServ/get/${route.params.id}`)
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/ProdServ/get/${route.params.id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
     if (!response.ok) {
       throw new Error('Failed to fetch product data')
     }
     const data = await response.json()
     product.value = data
   } catch (err) {
-    error.value = err.message
-    console.error('Error fetching product:', err)
+    handleError(err)
   } finally {
     isLoading.value = false
   }
+}
+
+function handleError(error) {
+  if (error.message === 'No authenticated user') {
+    error.value = 'Please log in to perform this action'
+  } else {
+    error.value = error.message
+  }
+  console.error('Error:', error)
 }
 
 onMounted(() => {

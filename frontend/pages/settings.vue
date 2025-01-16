@@ -87,8 +87,11 @@
                     v-model="companyData.company_name_info.tax_id"
                     type="text"
                     :placeholder="companyData.company_name_info.identity === 'SSN' ? 'XXX-XX-XXXX' : 'XX-XXXXXXX'"
+                    @input="validateAndMaskTaxId"
                     class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    :class="{ 'border-red-300': taxIdError }"
                   />
+                  <p v-if="taxIdError" class="mt-1 text-sm text-red-600">{{ taxIdError }}</p>
                 </div>
                 <div class="col-span-2">
                   <label class="flex items-center">
@@ -139,24 +142,33 @@
                   <input 
                     v-model="companyData.contact_info.company_email" 
                     type="email" 
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" 
+                    @input="(e) => validateAndUpdateEmail(e, 'company_email')"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    :class="{ 'border-red-300': emailError }"
                   />
+                  <p v-if="emailError" class="mt-1 text-sm text-red-600">{{ emailError }}</p>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700">Customer-Facing Email</label>
                   <input 
                     v-model="companyData.contact_info.customer_facing_email" 
                     type="email" 
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" 
+                    @input="(e) => validateAndUpdateEmail(e, 'customer_facing_email')"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    :class="{ 'border-red-300': emailError }"
                   />
+                  <p v-if="emailError" class="mt-1 text-sm text-red-600">{{ emailError }}</p>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700">Phone</label>
                   <input 
                     v-model="companyData.contact_info.company_phone" 
                     type="tel" 
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" 
+                    @input="validateAndUpdatePhone"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    :class="{ 'border-red-300': phoneError }"
                   />
+                  <p v-if="phoneError" class="mt-1 text-sm text-red-600">{{ phoneError }}</p>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700">Website</label>
@@ -212,7 +224,14 @@
                   <div class="grid grid-cols-2 gap-4">
                     <div>
                       <label class="block text-sm font-medium text-gray-700">ZIP Code</label>
-                      <input type="text" v-model="companyData.Address.company_address.zip_code" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                      <input 
+                        type="text" 
+                        v-model="companyData.Address.company_address.zip_code" 
+                        @input="(e) => validateAndUpdateZip(e, 'company')"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        :class="{ 'border-red-300': zipError }"
+                      />
+                      <p v-if="zipError" class="mt-1 text-sm text-red-600">{{ zipError }}</p>
                     </div>
                     <div>
                       <label class="block text-sm font-medium text-gray-700">Country</label>
@@ -251,7 +270,14 @@
                   <div class="grid grid-cols-2 gap-4">
                     <div>
                       <label class="block text-sm font-medium text-gray-700">ZIP Code</label>
-                      <input type="text" v-model="companyData.Address.legal_address.zip_code" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                      <input 
+                        type="text" 
+                        v-model="companyData.Address.legal_address.zip_code" 
+                        @input="(e) => validateAndUpdateZip(e, 'legal')"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        :class="{ 'border-red-300': zipError }"
+                      />
+                      <p v-if="zipError" class="mt-1 text-sm text-red-600">{{ zipError }}</p>                    
                     </div>
                     <div>
                       <label class="block text-sm font-medium text-gray-700">Country</label>
@@ -503,14 +529,48 @@
       </div>
     </div>
   </div>
+
+  <Teleport to="body">
+  <div v-if="confirmationRequired" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
+      <h3 class="text-lg font-medium text-gray-900">Confirm Changes</h3>
+      <div class="mt-4">
+        <p class="text-sm text-gray-500">
+          You are about to update sensitive information. Please confirm these changes:
+        </p>
+        <ul class="mt-2 text-sm text-gray-600">
+          <li v-for="[field, change] in pendingChanges" :key="field">
+            {{ field }}: {{ maskingUtils.maskTaxId(change.oldValue) }} → {{ maskingUtils.maskTaxId(change.newValue) }}
+          </li>
+        </ul>
+      </div>
+      <div class="mt-6 flex justify-end space-x-3">
+        <button
+          @click="confirmationRequired = false; pendingChanges.clear()"
+          class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+        >
+          Cancel
+        </button>
+        <button
+          @click="handleConfirmedChanges"
+          class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+</Teleport>
+
 </template>
 
 <script setup>
+
 definePageMeta({
   middleware: ['auth']
 })
 
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRuntimeConfig } from '#app'
 import { getAuth } from 'firebase/auth'
 import debounce from 'lodash/debounce'
@@ -525,6 +585,173 @@ const tabs = ref([
   { name: 'company', label: 'Company' },
   { name: 'advanced', label: 'Advanced' }
 ])
+
+const validationUtils = {
+  validateTaxId: (id, type) => {
+    if (!id) return false
+    const ssnPattern = /^\d{3}-\d{2}-\d{4}$/
+    const einPattern = /^\d{2}-\d{7}$/
+    return type === 'SSN' ? ssnPattern.test(id) : einPattern.test(id)
+  },
+
+  validateEmail: (email) => {
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailPattern.test(email)
+  },
+
+  validatePhone: (phone) => {
+    const phonePattern = /^\+?1?\d{9,15}$/
+    return phonePattern.test(phone)
+  },
+
+  validateZipCode: (zipCode) => {
+    const zipPattern = /^\d{5}(-\d{4})?$/
+    return zipPattern.test(zipCode)
+  }
+}
+
+// Data masking utilities
+const maskingUtils = {
+  maskTaxId: (id, type) => {
+    if (!id) return ''
+    return type === 'SSN' 
+      ? `***-**-${id.slice(-4)}`
+      : `**-***${id.slice(-4)}`
+  },
+
+  maskEmail: (email) => {
+    if (!email) return ''
+    const [local, domain] = email.split('@')
+    return `${local[0]}${'*'.repeat(local.length - 1)}@${domain}`
+  }
+}
+
+// Add error state refs
+const taxIdError = ref('')
+const emailError = ref('')
+const phoneError = ref('')
+const zipError = ref('')
+const successMessage = ref('')
+
+
+// Add validation handlers
+const validateAndMaskTaxId = (event) => {
+  const value = event.target.value
+  const type = companyData.value.company_name_info.identity
+  
+  if (!validationUtils.validateTaxId(value, type)) {
+    taxIdError.value = `Please enter a valid ${type === 'SSN' ? 'Social Security Number' : 'Employer Identification Number'}`
+    return
+  }
+  
+  taxIdError.value = ''
+  handleSensitiveChange('tax_id', value)
+}
+
+const validateAndUpdateEmail = (event, field) => {
+  const value = event.target.value
+  if (!validationUtils.validateEmail(value)) {
+    emailError.value = 'Please enter a valid email address'
+    return
+  }
+  emailError.value = ''
+  handleSensitiveChange(field, value)
+}
+
+const validateAndUpdatePhone = (event) => {
+  const value = event.target.value
+  if (!validationUtils.validatePhone(value)) {
+    phoneError.value = 'Please enter a valid phone number'
+    return
+  }
+  phoneError.value = ''
+  handleSensitiveChange('company_phone', value)
+}
+
+const validateAndUpdateZip = (event, addressType) => {
+  const value = event.target.value
+  if (!validationUtils.validateZipCode(value)) {
+    zipError.value = 'Please enter a valid ZIP code (XXXXX or XXXXX-XXXX)'
+    return
+  }
+  zipError.value = ''
+  handleSensitiveChange(`${addressType}_zip`, value)
+}
+
+// Add sensitive data handler
+const pendingChanges = ref(new Map())
+const confirmationRequired = ref(false)
+
+const handleSensitiveChange = async (field, newValue) => {
+  const oldValue = companyData.value[field]
+  if (oldValue !== newValue) {
+    pendingChanges.value.set(field, { oldValue, newValue })
+    confirmationRequired.value = true
+    return true
+  }
+  return false
+}
+
+const handleConfirmedChanges = async () => {
+  try {
+    for (const [field, { oldValue, newValue }] of pendingChanges.value) {
+      // Update the value based on field type
+      if (field === 'tax_id') {
+        companyData.value.company_name_info.tax_id = newValue
+      } else if (field === 'company_email') {
+        companyData.value.contact_info.company_email = newValue
+      } else if (field === 'customer_facing_email') {
+        companyData.value.contact_info.customer_facing_email = newValue
+      } else if (field === 'company_phone') {
+        companyData.value.contact_info.company_phone = newValue
+      } else if (field === 'company_zip') {
+        companyData.value.Address.company_address.zip_code = newValue
+      } else if (field === 'legal_zip') {
+        companyData.value.Address.legal_address.zip_code = newValue
+      }
+      
+      // Log the change
+      await logSettingsChange(field, oldValue, newValue)
+    }
+    
+    // Clear the pending changes
+    pendingChanges.value.clear()
+    confirmationRequired.value = false
+    
+    // Show success message
+    successMessage.value = 'Changes saved successfully'
+    setTimeout(() => {
+      successMessage.value = ''
+    }, 3000)
+  } catch (error) {
+    console.error('Failed to save changes:', error)
+    errorMessage.value = 'Failed to save changes. Please try again.'
+  }
+}
+
+// Add audit logging
+const logSettingsChange = async (field, oldValue, newValue) => {
+  try {
+    const auth = getAuth()
+    const idToken = await auth.currentUser?.getIdToken()
+    await fetch(`${config.public.apiBase}/api/audit/log`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${idToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        action: 'settings_update',
+        field,
+        oldValue: maskingUtils.maskTaxId(oldValue),
+        newValue: maskingUtils.maskTaxId(newValue),
+        timestamp: new Date().toISOString()
+      })
+    })
+  } catch (error) {
+    console.error('Failed to log audit entry:', error)
+  }
+}
 
 const fieldOptions = ref({
   // Company options
@@ -609,6 +836,8 @@ const advancedData = ref({
     sign_out_after_inactivity: ''
   }
 })
+
+
 
 const fetchFieldOptions = async () => {
   try {

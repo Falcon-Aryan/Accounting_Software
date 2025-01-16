@@ -90,6 +90,25 @@
 import { ref, onMounted } from 'vue'
 import { useRuntimeConfig, useRoute } from '#app'
 
+import { initializeApp } from 'firebase/app'
+import { getAuth } from 'firebase/auth'
+import { firebaseConfig } from '../../../config/firebase.config'
+
+definePageMeta({
+  middleware: ['auth']
+})
+
+const app = initializeApp(firebaseConfig)
+const auth = getAuth(app)
+
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
+  }
+  return user.getIdToken()
+}
+
 const config = useRuntimeConfig()
 const route = useRoute()
 const customer = ref(null)
@@ -112,18 +131,31 @@ const fetchCustomer = async () => {
   try {
     isLoading.value = true
     error.value = null
-    const response = await fetch(`${config.public.apiBase}/api/customers/get_customer/${route.params.id}`)
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/customers/get_customer/${route.params.id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
     if (!response.ok) {
       throw new Error('Failed to fetch customer data')
     }
     const data = await response.json()
     customer.value = data.customer
   } catch (err) {
-    error.value = err.message
-    console.error('Error fetching customer:', err)
+    handleError(err)
   } finally {
     isLoading.value = false
   }
+}
+
+function handleError(error) {
+  if (error.message === 'No authenticated user') {
+    error.value = 'Please log in to perform this action'
+  } else {
+    error.value = error.message
+  }
+  console.error('Error:', error)
 }
 
 onMounted(() => {

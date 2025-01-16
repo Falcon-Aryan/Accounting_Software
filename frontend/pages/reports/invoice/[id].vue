@@ -31,7 +31,7 @@
             <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
               <dt class="text-sm font-medium text-gray-500">Status</dt>
               <dd class="mt-1 text-sm sm:mt-0 sm:col-span-2">
-                <span :class="getStatusClass">{{ invoice.status }}</span>
+                {{ invoice.status }}
                 <span v-if="invoice.status === 'void'" class="ml-2 text-sm text-red-600">
                   {{ invoice.void_reason || 'No reason provided' }}
                 </span>
@@ -62,22 +62,24 @@
                   <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                       <tr>
-                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                         <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Quantity</th>
                         <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
                         <th scope="col" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                       </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
-                      <tr v-for="product in invoice.products" :key="product.id">
-                        <td class="px-4 py-3 text-sm text-gray-900">{{ product.name }}</td>
-                        <td class="px-4 py-3 text-sm text-gray-900 text-right">{{ product.quantity }}</td>
-                        <td class="px-4 py-3 text-sm text-gray-900 text-right">{{ formatCurrency(product.price) }}</td>
-                        <td class="px-4 py-3 text-sm text-gray-900 text-right">{{ formatCurrency(product.quantity * product.price) }}</td>
+                      <tr v-for="item in invoice.line_items" :key="item.product_id">
+                        <td class="px-4 py-3 text-sm text-gray-900">{{ item.product_id }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900">{{ item.description }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900 text-right">{{ item.quantity }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900 text-right">{{ formatCurrency(item.unit_price) }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-900 text-right">{{ formatCurrency(item.total) }}</td>
                       </tr>
                       <tr class="bg-gray-50">
-                        <td colspan="3" class="px-4 py-3 text-sm font-medium text-gray-900 text-right">Total:</td>
-                        <td class="px-4 py-3 text-sm font-medium text-gray-900 text-right">{{ formatCurrency(calculateTotal(invoice.products)) }}</td>
+                        <td colspan="4" class="px-4 py-3 text-sm font-medium text-gray-900 text-left">Total:</td>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900 text-right">{{ formatCurrency(invoice.total) }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -120,10 +122,6 @@
               <dt class="text-sm font-medium text-gray-500">Notes</dt>
               <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 whitespace-pre-wrap">{{ invoice.notes || 'No notes' }}</dd>
             </div>
-            <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-500">Terms</dt>
-              <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 whitespace-pre-wrap">{{ invoice.terms || 'No terms specified' }}</dd>
-            </div>
           </dl>
         </div>
       </div>
@@ -134,6 +132,25 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRuntimeConfig, useRoute } from '#app'
+import { initializeApp } from 'firebase/app'
+import { getAuth } from 'firebase/auth'
+import { firebaseConfig } from '../../../config/firebase.config'
+
+definePageMeta({
+  middleware: ['auth']
+})
+
+const app = initializeApp(firebaseConfig)
+const auth = getAuth(app)
+
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
+  }
+  return user.getIdToken()
+}
+
 
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -141,34 +158,6 @@ const invoice = ref(null)
 const payments = ref([])
 const isLoading = ref(true)
 const error = ref(null)
-
-const getStatusClass = computed(() => {
-  const baseClasses = 'px-2 py-1 text-xs font-medium rounded-full'
-  switch (invoice.value?.status) {
-    case 'draft':
-      return `${baseClasses} bg-gray-100 text-gray-800`
-    case 'posted':
-      return `${baseClasses} bg-blue-100 text-blue-800`
-    case 'paid':
-      return `${baseClasses} bg-green-100 text-green-800`
-    case 'overdue':
-      return `${baseClasses} bg-red-100 text-red-800`
-    case 'void':
-      return `${baseClasses} bg-gray-100 text-gray-800`
-    default:
-      return `${baseClasses} bg-gray-100 text-gray-800`
-  }
-})
-
-const totalPaid = computed(() => {
-  return payments.value.reduce((sum, payment) => sum + payment.amount, 0)
-})
-
-const balanceDue = computed(() => {
-  if (!invoice.value || !invoice.value.products) return 0
-  const total = calculateTotal(invoice.value.products)
-  return total - totalPaid.value
-})
 
 const formatDate = (date) => {
   if (!date) return 'N/A'
@@ -182,16 +171,16 @@ const formatCurrency = (value) => {
   }).format(value || 0)
 }
 
-const calculateTotal = (products) => {
-  if (!products) return 0
-  return products.reduce((total, product) => total + (product.quantity * product.price), 0)
-}
-
 const fetchInvoice = async () => {
   try {
     isLoading.value = true
     error.value = null
-    const response = await fetch(`${config.public.apiBase}/api/invoices/get_invoice/${route.params.id}`)
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/invoices/get_invoice/${route.params.id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
     if (!response.ok) {
       throw new Error('Failed to fetch invoice data')
     }
@@ -199,17 +188,30 @@ const fetchInvoice = async () => {
     invoice.value = data
     
     // Fetch payments for this invoice
-    const paymentsResponse = await fetch(`${config.public.apiBase}/api/invoices/get_payments/${route.params.id}`)
+    const paymentsResponse = await fetch(`${config.public.apiBase}/api/invoices/get_payments/${route.params.id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
     if (paymentsResponse.ok) {
       const paymentsData = await paymentsResponse.json()
       payments.value = paymentsData.payments || []
     }
   } catch (err) {
-    error.value = err.message
-    console.error('Error fetching invoice:', err)
+    handleError(err)
   } finally {
     isLoading.value = false
   }
+}
+
+
+function handleError(error) {
+  if (error.message === 'No authenticated user') {
+    error.value = 'Please log in to perform this action'
+  } else {
+    error.value = error.message
+  }
+  console.error('Error:', error)
 }
 
 onMounted(() => {

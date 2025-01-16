@@ -93,41 +93,77 @@ definePageMeta({
 })
 
 import { ref, onMounted } from 'vue'
-import { useRuntimeConfig, navigateTo } from 'nuxt/app'
 import { useFirebaseAuth } from '../composables/useFirebaseAuth'
+import { useRuntimeConfig } from '#app'
+import { initializeApp } from 'firebase/app'
+import { firebaseConfig } from '../config/firebase.config'
+import { getAuth } from 'firebase/auth'
 
 const { user, logout } = useFirebaseAuth()
 
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig)
+const auth = getAuth(app)
 const config = useRuntimeConfig()
 const recentActivity = ref([])
 const estimatesSummary = ref({})
 const invoicesSummary = ref({})
 const customersSummary = ref({})
 
-onMounted(() => {
-  // Fetch recent activity data
-  fetch(`${config.public.apiBase}/api/activity/recent`)
-    .then(response => response.json())
-    .then(data => recentActivity.value = data)
-    .catch(error => console.error('Error fetching recent activity:', error))
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
+  }
+  return user.getIdToken()
+}
 
-  // Fetch estimates summary
-  fetch(`${config.public.apiBase}/estimates/summary`)
-    .then(response => response.json())
-    .then(data => estimatesSummary.value = data)
-    .catch(error => console.error('Error fetching estimates summary:', error))
+const token = await getIdToken()
+onMounted(async () => {
+  try {
+    // Fetch recent activity data
+    fetch(`${config.public.apiBase}/api/activity/recent`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then(response => response.json())
+      .then(data => recentActivity.value = data)
+      .catch(error => console.error('Error fetching recent activity:', error))
 
-  // Fetch invoices summary
-  fetch(`${config.public.apiBase}/invoices/summary`)
-    .then(response => response.json())
-    .then(data => invoicesSummary.value = data)
-    .catch(error => console.error('Error fetching invoices summary:', error))
+    // Fetch estimates summary
+    fetch(`${config.public.apiBase}/estimates/summary`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then(response => response.json())
+      .then(data => estimatesSummary.value = data)
+      .catch(error => console.error('Error fetching estimates summary:', error))
 
-  // Fetch customers summary
-  fetch(`${config.public.apiBase}/api/customers/summary`)
-    .then(response => response.json())
-    .then(data => customersSummary.value = data)
-    .catch(error => console.error('Error fetching customers summary:', error))
+    // Fetch invoices summary
+    fetch(`${config.public.apiBase}/invoices/summary`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then(response => response.json())
+      .then(data => invoicesSummary.value = data)
+      .catch(error => console.error('Error fetching invoices summary:', error))
+
+    // Fetch customers summary
+    fetch(`${config.public.apiBase}/api/customers/summary`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then(response => response.json())
+      .then(data => customersSummary.value = data)
+      .catch(error => console.error('Error fetching customers summary:', error))
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error)
+  }
 })
 
 const handleLogout = async () => {

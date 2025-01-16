@@ -48,12 +48,6 @@
               <dt class="text-sm font-medium text-gray-500">Current Balance</dt>
               <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{{ formatCurrency(account.balance) }}</dd>
             </div>
-            <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-              <dt class="text-sm font-medium text-gray-500">Status</dt>
-              <dd class="mt-1 text-sm sm:mt-0 sm:col-span-2">
-                <span :class="getStatusClass">{{ account.isActive ? 'Active' : 'Inactive' }}</span>
-              </dd>
-            </div>
             <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
               <dt class="text-sm font-medium text-gray-500">Default Account</dt>
               <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
@@ -82,6 +76,24 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRuntimeConfig, useRoute } from '#app'
+import { initializeApp } from 'firebase/app'
+import { getAuth } from 'firebase/auth'
+import { firebaseConfig } from '../../../config/firebase.config'
+
+definePageMeta({
+  middleware: ['auth']
+})
+
+const app = initializeApp(firebaseConfig)
+const auth = getAuth(app)
+
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
+  }
+  return user.getIdToken()
+}
 
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -112,18 +124,31 @@ const fetchAccount = async () => {
   try {
     isLoading.value = true
     error.value = null
-    const response = await fetch(`${config.public.apiBase}/api/coa/get/${route.params.id}`)
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/coa/get/${route.params.id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
     if (!response.ok) {
       throw new Error('Failed to fetch account data')
     }
     const data = await response.json()
     account.value = data
   } catch (err) {
-    error.value = err.message
-    console.error('Error fetching account:', err)
+    handleError(err)
   } finally {
     isLoading.value = false
   }
+}
+
+function handleError(error) {
+  if (error.message === 'No authenticated user') {
+    error.value = 'Please log in to perform this action'
+  } else {
+    error.value = error.message
+  }
+  console.error('Error:', error)
 }
 
 onMounted(() => {

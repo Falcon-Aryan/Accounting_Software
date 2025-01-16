@@ -42,7 +42,6 @@ class BaseDocument:
     payment_terms: str = "due_on_receipt"
     status: str = "draft"
     line_items: List[LineItem] = field(default_factory=list)
-    subtotal: float = 0.0
     total: float = 0.0
     notes: Optional[str] = None
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
@@ -52,8 +51,7 @@ class BaseDocument:
         self._calculate_totals()
 
     def _calculate_totals(self):
-        self.subtotal = sum(item.total for item in self.line_items)
-        self.total = self.subtotal  # Can be extended for taxes/discounts
+        self.total = sum(item.unit_price * item.quantity for item in self.line_items)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -63,7 +61,6 @@ class BaseDocument:
             'payment_terms': self.payment_terms,
             'status': self.status,
             'line_items': [item.to_dict() for item in self.line_items],
-            'subtotal': self.subtotal,
             'total': self.total,
             'notes': self.notes,
             'created_at': self.created_at,

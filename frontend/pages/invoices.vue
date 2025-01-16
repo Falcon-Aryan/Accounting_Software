@@ -33,7 +33,7 @@
               v-model="selectedStatus"
               class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
             >
-              <option value="All">All</option>
+              <option value="All">All Status</option>
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
               <option value="paid">Paid</option>
@@ -82,7 +82,7 @@
             :to="`/reports/invoice/${invoice.id}`"
             class="text-green-600 hover:text-green-500"
           >
-            {{ invoice.invoice_no }}
+            {{ invoice.id }}
           </NuxtLink>
           <div v-if="invoice.status === 'void'" class="text-xs text-red-600 mt-1">
             {{ invoice.void_reason || 'No reason provided' }}
@@ -101,7 +101,7 @@
           {{ formatCurrency(invoice.total_amount) }}
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-          {{ formatCurrency(invoice.balance_due) }}
+          {{ formatCurrency(invoice.balance_due || invoice.total) }}
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
           <span
@@ -110,8 +110,9 @@
               'bg-gray-100 text-gray-800': invoice.status === 'draft',
               'bg-green-100 text-green-800': invoice.status === 'posted',
               'bg-blue-100 text-blue-800': invoice.status === 'paid',
+              'bg-yellow-100 text-yellow-800': invoice.status === 'partially_paid',
               'bg-red-100 text-red-800': invoice.status === 'overdue',
-              'bg-gray-100 text-gray-800 line-through': invoice.status === 'void'
+              'bg-gray-100 text-gray-800': invoice.status === 'void'
             }"
           >
             {{ invoice.status }}
@@ -280,8 +281,14 @@ const mapInvoiceToBaseDocument = (invoice) => {
     created_at: now,
     updated_at: now,
     date: invoice.invoice_date || invoice.date,
-    total: invoice.total_amount || invoice.total,
-    balance: invoice.balance_due || invoice.total,
+    total: invoice.total_amount || invoice.total || 0,
+    balance_due: invoice.balance_due || invoice.total || 0,
+    notes: invoice.notes || "",
+    status: invoice.status || "draft",
+    payments: invoice.payments || [], 
+    sent_at: invoice.sent_at || null,
+    voided_at: invoice.voided_at || null,
+    void_reason: invoice.void_reason || null,
     line_items: (invoice.line_items || []).map(item => ({
       ...item,
       unit_price: item.price || item.unit_price,
@@ -295,7 +302,7 @@ const mapBaseDocumentToInvoice = (doc) => {
     ...doc,
     invoice_date: doc.date,
     total_amount: doc.total,
-    balance_due: doc.balance,
+    balance_due: doc.balance_due,
     line_items: (doc.line_items || []).map(item => ({
       ...item,
       price: item.unit_price

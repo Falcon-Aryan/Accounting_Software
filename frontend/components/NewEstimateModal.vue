@@ -4,6 +4,7 @@
     title="Create New Estimate"
     width="lg"
     @close="close"
+    @save="handleSubmit"
   >
     <form @submit.prevent="handleSubmit">
       <!-- Customer Selection -->
@@ -44,11 +45,27 @@
       <div class="mb-4">
         <label class="block text-sm font-medium text-gray-700 mb-2">Estimate Date</label>
         <input
-          v-model="form.estimate_date"
+          v-model="form.date"
           type="date"
           required
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
         />
+      </div>
+
+       <!-- Payment Terms -->
+       <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
+        <select
+          v-model="form.payment_terms"
+          required
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
+        >
+          <option value="due_on_receipt">Due on Receipt</option>
+          <option value="net_15">Net 15</option>
+          <option value="net_30">Net 30</option>
+          <option value="net_60">Net 60</option>
+          <option value="custom">Custom</option>
+        </select>
       </div>
 
       <!-- Expiry Date -->
@@ -58,6 +75,7 @@
           v-model="form.expiry_date"
           type="date"
           required
+          :disabled="form.payment_terms !== 'custom'"
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
         />
       </div>
@@ -67,13 +85,28 @@
         <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
         <select
           v-model="form.status"
+          required
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
         >
+          <option value="Select status" disabled>Select status</option>
           <option value="draft">Draft</option>
-          <option value="sent">Sent</option>
+          <option value="pending">Pending</option>
           <option value="accepted">Accepted</option>
           <option value="declined">Declined</option>
+          <option value="expired">Expired</option>
+          <option value="converted">Converted</option>
         </select>
+      </div>
+
+      <!-- Add Notes Section -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700">Notes</label>
+        <textarea
+          v-model="form.notes"
+          rows="3"
+          class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
+          placeholder="Add any notes for this estimate..."
+        ></textarea>
       </div>
 
       <!-- Line Items Table -->
@@ -92,10 +125,10 @@
               </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-              <tr v-for="(item, index) in form.line_items" :key="index">
+              <tr v-for="(product, index) in form.line_items" :key="index">
                 <td class="px-4 py-4">
                   <select
-                    v-model="item.product_id"
+                    v-model="product.id"
                     @change="handleProductSelect(index, $event.target.value)"
                     required
                     class="w-48 px-3 py-1.5 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
@@ -114,14 +147,14 @@
                 </td>
                 <td class="px-4 py-4">
                   <input
-                    v-model="item.description"
+                    v-model="product.description"
                     type="text"
                     class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
                   />
                 </td>
                 <td class="px-4 py-4">
                   <input
-                    v-model.number="item.unit_price"
+                    v-model.number="product.unit_price"
                     type="number"
                     required
                     step="0.01"
@@ -130,7 +163,7 @@
                 </td>
                 <td class="px-4 py-4">
                   <input
-                    v-model.number="item.quantity"
+                    v-model.number="product.quantity"
                     type="number"
                     required
                     min="1"
@@ -138,11 +171,11 @@
                   />
                 </td>
                 <td class="px-4 py-4 text-sm text-gray-900">
-                  {{ formatCurrency(item.unit_price * item.quantity) }}
+                  {{ formatCurrency(product.unit_price * product.quantity) }}
                 </td>
                 <td class="px-4 py-4">
                   <button
-                    @click.prevent="removeItem(index)"
+                    @click.prevent="removeProduct(index)"
                     type="button"
                     class="text-red-600 hover:text-red-900"
                   >
@@ -157,10 +190,10 @@
         <div class="mt-3 flex justify-between items-center">
           <button
             type="button"
-            @click.prevent="addItem"
+            @click="addProduct"
             class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
           >
-            Add Line Item
+            Add Product
           </button>
           
           <div class="text-right">
@@ -170,42 +203,21 @@
         </div>
       </div>
 
-      <!-- Notes -->
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
-        <textarea
-          v-model="form.notes"
-          rows="3"
-          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-          placeholder="Add any notes about this estimate..."
-        />
-      </div>
-
-      <!-- Terms & Conditions -->
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Terms & Conditions</label>
-        <textarea
-          v-model="form.terms_conditions"
-          rows="3"
-          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-          placeholder="Add terms and conditions..."
-        />
-      </div>
-
       <!-- Form Actions -->
       <div class="mt-6 flex justify-end space-x-3">
         <button
           type="button"
           @click="close"
-          class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+          class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
         >
           Cancel
         </button>
         <button
           type="submit"
-          class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          :disabled="isSubmitting"
         >
-          Create Estimate
+          {{ isSubmitting ? 'Creating...' : 'Create Estimate' }}
         </button>
       </div>
     </form>
@@ -213,123 +225,188 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import BaseNewFormModal from '~/components/BaseNewFormModal.vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRuntimeConfig } from '#app'
-
-const router = useRouter()
-const config = useRuntimeConfig()
+import { getAuth } from 'firebase/auth'
+import BaseNewFormModal from '~/components/BaseNewFormModal.vue'
 
 const props = defineProps({
   isOpen: Boolean
 })
 
 const emit = defineEmits(['close', 'save'])
+const router = useRouter()
+const config = useRuntimeConfig()
+const auth = getAuth()
+
+const isSubmitting = ref(false)
+const errorMessage = ref('')
 
 const customers = ref([])
 const products = ref([])
 const form = ref({
   customer_name: '',
-  estimate_date: new Date().toISOString().split('T')[0],
-  expiry_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0], // 30 days from now
+  date: new Date().toISOString().split('T')[0],
+  expiry_date: new Date().toISOString().split('T')[0],
+  payment_terms: 'due_on_receipt',
   status: 'draft',
-  line_items: [],
   notes: '',
-  terms_conditions: ''
+  line_items: [{
+    id: '',
+    description: '',
+    unit_price: '',
+    quantity: 1
+  }]
 })
 
+// Get current user's ID token
+async function getIdToken() {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('No authenticated user')
+  }
+  return user.getIdToken()
+}
+
+// Fetch customers
 async function fetchCustomers() {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`)
-    if (!response.ok) throw new Error('Failed to fetch customers')
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/customers/list_customers`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to fetch customers')
+    }
+
     const data = await response.json()
-    customers.value = data.customers
+    if (data.customers) {
+      customers.value = data.customers
+    }
   } catch (error) {
-    console.error('Error fetching customers:', error)
+    if (error.message === 'No authenticated user') {
+      console.error('Please log in to fetch customers')
+    } else {
+      console.error('Error fetching customers:', error)
+    }
   }
 }
 
+// Fetch products
 async function fetchProducts() {
   try {
-    const response = await fetch(`${config.public.apiBase}/api/products/list_products`)
-    if (!response.ok) throw new Error('Failed to fetch products')
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/ProdServ/list`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to fetch products')
+    }
+
     const data = await response.json()
-    products.value = data.products
+    if (data.products) {
+      products.value = data.products
+    }
   } catch (error) {
-    console.error('Error fetching products:', error)
+    handleError(error)
   }
 }
 
-// Fetch data on component mount
-fetchCustomers()
-fetchProducts()
+onMounted(() => {
+  fetchCustomers()
+  fetchProducts()
+})
 
 function navigateToCustomers() {
+  close()
   router.push('/customers?action=new')
-}
-
-function navigateToProducts() {
-  router.push('/prodServ?action=new')
 }
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD'
-  }).format(amount || 0)
+  }).format(amount)
 }
 
 const calculateTotal = computed(() => {
-  return form.value.line_items.reduce((sum, item) => sum + (Number(item.unit_price) * Number(item.quantity) || 0), 0)
+  return form.value.line_items.reduce((sum, item) => 
+    sum + (Number(item.unit_price) * Number(item.quantity) || 0), 0)
 })
 
-function addItem() {
+
+function addProduct() {
   form.value.line_items.push({
-    product_id: '',
+    id: '',
     description: '',
     unit_price: 0,
     quantity: 1
   })
 }
 
-function removeItem(index) {
+function removeProduct(index) {
   form.value.line_items.splice(index, 1)
 }
 
-function handleProductSelect(index, selectedProductId) {
-  if (selectedProductId === 'new_product') {
-    navigateToProducts()
+function handleProductSelect(index, productId) {
+  if (productId === 'new_product') {
+    router.push('/prodServ?action=new')
     return
   }
 
-  const product = products.value.find(p => p.id === selectedProductId)
-  if (product) {
+  const selectedProduct = products.value.find(p => p.id === productId)
+  if (selectedProduct) {
     form.value.line_items[index] = {
-      ...form.value.line_items[index],
-      product_id: product.id,
-      description: product.description || '',
-      unit_price: product.unit_price
+      id: selectedProduct.id,
+      description: selectedProduct.description || '',
+      unit_price: selectedProduct.unit_price,
+      quantity: form.value.line_items[index]?.quantity || 1
     }
   }
 }
 
-function close() {
-  resetForm()
-  emit('close')
+
+const updateExpiryDate = (terms) => {
+  const estimateDate = new Date(form.value.date)
+  let expiryDate = new Date(estimateDate)
+
+  switch (terms) {
+    case 'net_15':
+      expiryDate.setDate(estimateDate.getDate() + 15)
+      break
+    case 'net_30':
+      expiryDate.setDate(estimateDate.getDate() + 30)
+      break
+    case 'net_60':
+      expiryDate.setDate(estimateDate.getDate() + 60)
+      break
+    default: // due_on_receipt or custom
+      expiryDate = estimateDate
+      break
+  }
+
+  form.value.expiry_date = expiryDate.toISOString().split('T')[0]
 }
 
-function resetForm() {
-  form.value = {
-    customer_name: '',
-    estimate_date: new Date().toISOString().split('T')[0],
-    expiry_date: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
-    status: 'draft',
-    line_items: [],
-    notes: '',
-    terms_conditions: ''
-  }
-}
+
+watch(() => form.value.payment_terms, (newTerms) => {
+  updateExpiryDate(newTerms)
+})
+
+watch(() => form.value.date, (newDate) => {
+  updateExpiryDate(form.value.payment_terms)
+})
+
+
 
 async function handleSubmit() {
   try {
@@ -338,31 +415,84 @@ async function handleSubmit() {
       return
     }
 
+    isSubmitting.value = true
     const customer = customers.value.find(c => 
       `${c.first_name} ${c.last_name}` === form.value.customer_name
     )
 
-    const estimateData = {
-      customer_name: form.value.customer_name,
-      customer_id: customer?.id,
-      estimate_date: form.value.estimate_date,
-      expiry_date: form.value.expiry_date,
-      status: form.value.status,
-      line_items: form.value.line_items.map(item => ({
-        product_id: item.product_id,
-        description: item.description || '',
-        unit_price: Number(item.unit_price),
-        quantity: Number(item.quantity)
-      })),
-      notes: form.value.notes,
-      terms_conditions: form.value.terms_conditions,
-      total_amount: calculateTotal.value
+    if (!customer?.id) {
+      throw new Error('Please select a valid customer')
     }
 
-    emit('save', estimateData)
-    close()
+    const estimateData = {
+      customer_id: customer.id,
+      customer_name: form.value.customer_name,
+      date: form.value.date,
+      expiry_date: form.value.expiry_date,
+      payment_terms: form.value.payment_terms,
+      status: form.value.status,
+      line_items: form.value.line_items.map(p => ({
+        product_id: p.id,
+        description: p.description || '',
+        unit_price: Number(p.unit_price),
+        quantity: Number(p.quantity),
+        total: Number(p.unit_price) * Number(p.quantity)
+      })),
+      total: calculateTotal.value,
+      notes: form.value.notes,
+    }
+  emit('save', estimateData)
+  close()
   } catch (error) {
-    console.error('Error creating estimate:', error)
+    handleError(error)
+  } finally {
+    isSubmitting.value = false
   }
 }
+
+function close() {
+  form.value = {
+    customer_name: '',
+    date: new Date().toISOString().split('T')[0],
+    expiry_date: new Date().toISOString().split('T')[0],
+    payment_terms: 'due_on_receipt',
+    status: 'draft',
+    notes: '',
+    line_items: [{
+      id: '',
+      description: '',
+      unit_price: '',
+      quantity: 1
+    }]
+  }
+  emit('close')
+}
+
+function handleError(error) {
+  console.error('Operation failed:', error)
+  if (error.message === 'No authenticated user') {
+    errorMessage.value = 'Please log in to continue'
+  } else {
+    errorMessage.value = error.message || 'An error occurred'
+  }
+}
+
+watch(() => products.value, (newProducts) => {
+  if (newProducts.length > 0) {
+    form.value.line_items.forEach((product, index) => {
+      if (product.id) {
+        const matchingProduct = newProducts.find(p => p.id === product.id)
+        if (matchingProduct) {
+          form.value.line_items[index] = {
+            ...form.value.line_items[index],
+            name: matchingProduct.name,
+            description: matchingProduct.description,
+            unit_price: matchingProduct.unit_price
+          }
+        }
+      }
+    })
+  }
+}, { deep: true })
+
 </script>

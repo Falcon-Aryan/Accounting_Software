@@ -413,7 +413,6 @@ def create_invoice():
             payment_terms=data['payment_terms'],
             status=data['status'],
             line_items=line_items,
-            subtotal=data['subtotal'],
             total=data['total'],
             balance_due=data['balance_due'],
             notes=data.get('notes', ''),
@@ -563,26 +562,6 @@ def delete_invoice(id):
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-
-
-@invoices_bp.route('/<id>/payments', methods=['GET'])
-def get_payments(id):
-    """Get all payments for an invoice"""
-    uid = get_user_id()
-    if not uid:
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    try:
-        invoice = Invoice.get_by_id(uid, id)
-        if not invoice:
-            return jsonify({'error': 'Invoice not found'}), 404
-            
-        payments = [Payment.from_dict(p).to_dict() for p in invoice.payments]
-        return jsonify(payments), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 @invoices_bp.route('/void/<id>', methods=['POST'])
 def void_invoice(id):
     """Void an invoice"""
@@ -712,6 +691,79 @@ def duplicate_invoice(id):
         return jsonify(new_invoice.to_dict()), 201
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+        
+@invoices_bp.route('/<id>/payments', methods=['GET'])
+def get_payments(id):
+    """Get all payments for an invoice"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        invoice = Invoice.get_by_id(uid, id)
+        if not invoice:
+            return jsonify({'error': 'Invoice not found'}), 404
+            
+        payments = [Payment.from_dict(p).to_dict() for p in invoice.payments]
+        return jsonify(payments), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@invoices_bp.route('/<id>/add_payment', methods=['POST'])
+def add_payment(id):
+    """Add a payment to an invoice"""
+    uid = get_user_id()
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        invoices_data = load_invoices(uid)
+        invoices = invoices_data.get('invoices', [])
+        
+        # Find the invoice
+        invoice = None
+        for inv in invoices:
+            if inv['id'] == id:
+                invoice = inv
+                break
+                
+        if not invoice:
+            return jsonify({'error': 'Invoice not found'}), 404
+
+        data = request.get_json()
+        amount = float(data.get('amount', 0))
+        payment_date = data.get('date', datetime.utcnow().isoformat())
+        payment_method = data.get('payment_method', '')
+        notes = data.get('notes', '')
+
+        if 'payments' not in invoice:
+            invoice['payments'] = []
+
+        # Add new payment
+        payment = {
+            'amount': amount,
+            'date': payment_date,
+            'payment_method': payment_method,
+            'notes': notes
+        }
+        invoice['payments'].append(payment)
+
+        # Update balance due
+        invoice['balance_due'] = invoice['total'] - sum(p['amount'] for p in invoice['payments'])
+        invoice['last_payment_date'] = payment_date
+
+        # Save updated invoices
+        save_invoices(uid, invoices_data)
+
+        # Update summary
+        update_summary(invoices)
+
+        return jsonify(invoice), 200
+
+    except Exception as e:
+        print(f"Error in add_payment: {str(e)}")  # Add debugging
         return jsonify({'error': str(e)}), 500
 
 @invoices_bp.route('/update_summary', methods=['POST'])

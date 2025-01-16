@@ -35,10 +35,11 @@
             >
               <option value="All">All Status</option>
               <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
+              <option value="pending">Pending</option>
               <option value="accepted">Accepted</option>
               <option value="declined">Declined</option>
-              <option value="void">Void</option>
+              <option value="expired">Expired</option>
+              <option value="converted">Converted</option>
             </select>
             <BaseButton @click="openNewEstimateModal">
               New Estimate
@@ -81,16 +82,16 @@
             :to="`/reports/estimate/${estimate.id}`"
             class="text-green-600 hover:text-green-500"
           >
-            {{ estimate.estimate_no }}
+            {{ estimate.id }}
           </NuxtLink>
-          <div v-if="estimate.status === 'void'" class="text-xs text-red-600 mt-1">
-            {{ estimate.void_reason || 'No reason provided' }}
+          <div v-if="estimate.status === 'declined'" class="text-xs text-red-600 mt-1">
+            {{ estimate.decline_reason || 'No reason provided' }}
           </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
           {{ formatDate(estimate.estimate_date) }}
-          <div v-if="estimate.status === 'void' && estimate.voided_at" class="text-xs text-gray-400 mt-1">
-            Voided: {{ formatDate(estimate.voided_at) }}
+          <div v-if="estimate.status === 'declined' && estimate.declined_at" class="text-xs text-gray-400 mt-1">
+            Declined: {{ formatDate(estimate.declined_at) }}
           </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -101,16 +102,23 @@
         </td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
           {{ formatDate(estimate.expiry_date) }}
+          <div 
+            v-if="isExpiringWithin7Days(estimate.expiry_date)" 
+            class="text-xs text-orange-600 mt-1"
+          >
+            Expires soon
+          </div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
           <span
             :class="{
               'px-2 py-1 text-xs font-medium rounded-full': true,
               'bg-gray-100 text-gray-800': estimate.status === 'draft',
-              'bg-blue-100 text-blue-800': estimate.status === 'sent',
+              'bg-blue-100 text-blue-800': estimate.status === 'pending',
               'bg-green-100 text-green-800': estimate.status === 'accepted',
               'bg-red-100 text-red-800': estimate.status === 'declined',
-              'bg-gray-100 text-gray-800 line-through': estimate.status === 'void'
+              'bg-gray-100 text-gray-800': estimate.status === 'expired',
+              'bg-yellow-100 text-yellow-800': estimate.status === 'converted'
             }"
           >
             {{ estimate.status }}
@@ -123,34 +131,24 @@
               class="text-indigo-600 hover:text-indigo-900 flex items-center"
             >
               Options
-              <svg class="ml-2 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+              <svg class="ml-2 -mr-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
             <div 
-              v-if="openOptionsId === estimate.id"
+              v-if="openOptionsForEstimate === estimate.id"
               class="absolute left-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50"
               @click.stop
             >
-              <div class="py-1" role="menu" aria-orientation="vertical">
-                <!-- Edit Option -->
+            <div class="flex flex-col" role="menu">
+              <!-- Edit Option -->
                 <button
                   @click="editEstimate(estimate)"
                   class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   role="menuitem"
                   :disabled="estimate.status === 'accepted'"
                 >
-                  Edit
-                </button>
-
-                <!-- Convert to Invoice Option -->
-                <button
-                  v-if="estimate.status === 'accepted'"
-                  @click="convertToInvoice(estimate.id)"
-                  class="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-gray-100"
-                  role="menuitem"
-                >
-                  Convert to Invoice
+                  Edit Estimate
                 </button>
 
                 <!-- Send Option -->
@@ -163,23 +161,23 @@
                   Send Estimate
                 </button>
 
-                <!-- Void Option -->
+                <!-- Convert to Invoice Option -->
                 <button
-                  v-if="estimate.status !== 'void'"
-                  @click="voidEstimate(estimate.id)"
-                  class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
+                  v-if="estimate.status === 'accepted'"
+                  @click="convertToInvoice(estimate)"
+                  class="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-gray-100"
                   role="menuitem"
                 >
-                  Void
+                  Convert to Invoice
                 </button>
 
                 <!-- Delete Option -->
                 <button
-                  @click="deleteEstimate(estimate.id)"
+                  @click="confirmDelete(estimate.id)"
                   class="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
                   role="menuitem"
                 >
-                  Delete
+                  Delete Estimate
                 </button>
               </div>
             </div>
@@ -196,8 +194,9 @@
       @close="closeNewEstimateModal"
       @save="handleCreateEstimate"
     />
-    <EditEstimateModal 
-      :estimate="selectedEditEstimate"
+    <EditEstimateModal
+      v-if="selectedEstimate"
+      :estimate="selectedEstimate"
       :is-open="showEditEstimateModal"
       @save="handleUpdateEstimate"
       @close="closeEditEstimateModal"
@@ -213,9 +212,8 @@ definePageMeta({
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import TablePageLayout from '~/components/TablePageLayout.vue'
-import NewInvoiceModal from '~/components/NewInvoiceModal.vue'
-import EditInvoiceModal from '~/components/EditInvoiceModal.vue'
-import PayInvoiceModal from '~/components/PayInvoiceModal.vue'
+import NewEstimateModal from '~/components/NewEstimateModal.vue'
+import EditEstimateModal from '~/components/EditEstimateModal.vue'
 import { useRuntimeConfig } from '#app'
 import { initializeApp } from 'firebase/app'
 import { firebaseConfig } from '../config/firebase.config'
@@ -226,17 +224,15 @@ const auth = getAuth(app)
 const config = useRuntimeConfig()
 
 // Reactive state
-const invoices = ref([])
+const estimates = ref([])
 const isLoading = ref(false)
 const errorMessage = ref('')
-const openOptionsForInvoice = ref(null)
+const openOptionsForEstimate = ref(null)
 const selectedStatus = ref('All')
 const searchQuery = ref('')
-const showNewInvoiceModal = ref(false)
-const showEditInvoiceModal = ref(false)
-const showPayInvoiceModal = ref(false)
-const selectedEditInvoice = ref(null)
-const selectedPaymentInvoice = ref(null)
+const showNewEstimateModal = ref(false)
+const showEditEstimateModal = ref(false)
+const selectedEstimate = ref(null)
 const isAuthenticated = ref(false)
 
 // Get current user's ID token
@@ -248,48 +244,87 @@ async function getIdToken() {
   return user.getIdToken()
 }
 
-// Fetch invoices from the API
-async function fetchInvoices() {
+
+const mapEstimateToBaseDocument = (estimate) => {
+  const now = new Date().toISOString()
+  return {
+    ...estimate,
+    created_at: now,
+    updated_at: now,
+    date: estimate.estimate_date || estimate.date,
+    total: estimate.total_amount || estimate.total || 0,
+    balance_due: estimate.balance_due || estimate.total || 0,
+    notes: estimate.notes || "",
+    status: estimate.status || "draft",
+    payments: estimate.payments || [], 
+    sent_at: estimate.sent_at || null,
+    voided_at: estimate.voided_at || null,
+    void_reason: estimate.void_reason || null,
+    line_items: (estimate.line_items || []).map(item => ({
+      ...item,
+      unit_price: item.price || item.unit_price,
+      total: (item.quantity * (item.price || item.unit_price))
+    }))
+  }
+}
+
+const mapBaseDocumentToEstimate = (doc) => {
+  return {
+    ...doc,
+    estimate_date: doc.date,
+    total_amount: doc.total,
+    balance_due: doc.balance_due,
+    line_items: (doc.line_items || []).map(item => ({
+      ...item,
+      price: item.unit_price
+    }))
+  }
+}
+
+// Fetch estimates from the API
+async function fetchEstimates() {
   try {
     isLoading.value = true
     errorMessage.value = ''
     const token = await getIdToken()
+    console.log('Token obtained')
     
-    await fetch(`${config.public.apiBase}/api/invoices/update_summary`, {
+    await fetch(`${config.public.apiBase}/api/estimates/update_summary`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`
       }
     })
+    console.log('Summary updated') 
 
     const queryParams = new URLSearchParams()
     if (selectedStatus.value !== 'All') {
-      queryParams.append('status', selectedStatus.value)
+      queryParams.append('status', selectedStatus.value.toLowerCase())
     }
     if (searchQuery.value) {
       queryParams.append('search', searchQuery.value)
     }
 
-    const response = await fetch(`${config.public.apiBase}/api/invoices/list_invoices?${queryParams.toString()}`, {
+    const response = await fetch(`${config.public.apiBase}/api/estimates/list_estimates?${queryParams.toString()}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     })
+    console.log('Response status:', response.status)
     
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.message || 'Failed to fetch invoices')
+      throw new Error(error.message || 'Failed to fetch estimates')
     }
 
     const data = await response.json()
-    invoices.value = data.invoices
+    console.log('Raw response data:', data)
+
+    estimates.value = data.estimates.map(mapBaseDocumentToEstimate)
+    console.log('Mapped estimates:', estimates.value)
   } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to view invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error fetching invoices:', error)
+    console.error('Error in fetchEstimates:', error)
+    handleError(error)
   } finally {
     isLoading.value = false
   }
@@ -301,11 +336,11 @@ onMounted(() => {
     isAuthenticated.value = !!user
     if (user) {
       console.log('User is authenticated:', user.email)
-      fetchInvoices()
+      fetchEstimates()
     } else {
       console.log('No user authenticated')
-      invoices.value = []
-      errorMessage.value = 'Please log in to view invoices'
+      estimates.value = []
+      errorMessage.value = 'Please log in to view estimates'
     }
   })
 
@@ -320,27 +355,28 @@ onMounted(() => {
 
 // Close dropdown when clicking outside
 const handleClickOutside = (event) => {
-  if (openOptionsForInvoice.value && !event.target.closest('.options-container')) {
-    openOptionsForInvoice.value = null
+  if (openOptionsForEstimate.value && !event.target.closest('.options-container')) {
+    openOptionsForEstimate.value = null
   }
 }
 
-// Filter invoices based on search query and status
-const filteredInvoices = computed(() => {
-  if (!invoices.value) return []
+// Filter Estimates based on search query and status
+const filteredEstimates = computed(() => {
+  if (!estimates.value) return []
   
-  let filtered = invoices.value
+  let filtered = estimates.value
   
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(inv => 
-      inv.invoice_no.toLowerCase().includes(query) ||
-      inv.customer_name?.toLowerCase().includes(query)
+    filtered = filtered.filter(est => 
+      est.id.toLowerCase().includes(query) ||
+      est.estimate_no?.toLowerCase().includes(query) ||
+      est.customer_name?.toLowerCase().includes(query)
     )
   }
   
   if (selectedStatus.value !== 'All') {
-    filtered = filtered.filter(inv => inv.status === selectedStatus.value)
+    filtered = filtered.filter(est => est.status === selectedStatus.value)
   }
   
   return filtered
@@ -362,57 +398,122 @@ function formatCurrency(amount) {
   }).format(amount)
 }
 
-function toggleOptions(invoiceId, event) {
+function toggleOptions(estimateId, event) {
   event.stopPropagation()
-  openOptionsForInvoice.value = openOptionsForInvoice.value === invoiceId ? null : invoiceId
+  openOptionsForEstimate.value = openOptionsForEstimate.value === estimateId ? null : estimateId
 }
 
-function editInvoice(invoice) {
-  showPayInvoiceModal.value = false
-  showNewInvoiceModal.value = false
-  selectedEditInvoice.value = invoice
-  openOptionsForInvoice.value = null
-  showEditInvoiceModal.value = true
+function editEstimate(estimate) {
+  selectedEstimate.value = estimate
+  showEditEstimateModal.value = true
+  openOptionsForEstimate.value = null
 }
 
-function closeEditInvoiceModal() {
-  selectedEditInvoice.value = null
-  showEditInvoiceModal.value = false
+function closeEditEstimateModal() {
+  showEditEstimateModal.value = false
+  selectedEstimate.value = null
 }
 
-async function handleUpdateInvoice(updatedData) {
+async function handleUpdateEstimate(updatedData) {
   try {
     const token = await getIdToken()
-    const response = await fetch(`${config.public.apiBase}/api/invoices/update_invoice/${updatedData.id}`, {
+    const mappedData = mapEstimateToBaseDocument(updatedData)
+
+    const response = await fetch(`${config.public.apiBase}/api/estimates/update_estimate/${updatedData.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(updatedData)
+      body: JSON.stringify(mappedData)
     })
 
-    const data = await response.json()
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to update invoice')
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to update estimate')
     }
 
-    await fetchInvoices()
-    closeEditInvoiceModal()
+    await fetchEstimates()
+    closeEditEstimateModal()
   } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to update invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error updating invoice:', error)
+    handleError(error)
   }
 }
 
-async function confirmDelete(invoice) {
-  const message = invoice.status !== 'draft' 
-    ? `Are you sure you want to delete invoice ${invoice.invoice_no}?\n\nWarning: This will reverse all associated transactions.` 
-    : `Are you sure you want to delete invoice ${invoice.invoice_no}?`;
+async function sendEstimate(estimate) {
+  try {
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/estimates/send/${estimate.id}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to send estimate')
+    }
+
+    await fetchEstimates()
+    openOptionsForEstimate.value = null
+  } catch (error) {
+    handleError(error)
+  }
+}
+
+async function convertToInvoice(estimate) {
+  if (!estimate || !estimate.id) {
+    console.error('Invalid estimate:', estimate)
+    return
+  }
+
+  if (!confirm('Are you sure you want to convert this estimate to an invoice?')) {
+    return
+  }
+
+  try {
+    const token = await getIdToken()
+    const response = await fetch(`${config.public.apiBase}/api/estimates/convert_to_invoice/${estimate.id}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to convert estimate to invoice')
+    }
+
+    await fetchEstimates()
+    openOptionsForEstimate.value = null
+  } catch (error) {
+    handleError(error)
+  }
+}
+
+
+function isExpiringWithin7Days(expiryDate) {
+  if (!expiryDate) return false;
+  const expiry = new Date(expiryDate);
+  const now = new Date();
+  const daysUntilExpiry = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+  return daysUntilExpiry > 0 && daysUntilExpiry <= 7;
+}
+
+async function confirmDelete(estimateId) {
+
+  const estimate = filteredEstimates.value.find(est => est.id === estimateId)
+  
+  if (!estimate) {
+    handleError('Estimate not found')
+    return
+  }
+  
+  const message = estimate.status !== 'draft' 
+    ? `Are you sure you want to delete estimate ${estimate.estimate_no}?\n\nWarning: This will reverse all associated transactions.` 
+    : `Are you sure you want to delete estimate ${estimate.estimate_no}?`;
 
   if (!confirm(message)) {
     return;
@@ -420,7 +521,7 @@ async function confirmDelete(invoice) {
 
   try {
     const token = await getIdToken()
-    const response = await fetch(`${config.public.apiBase}/api/invoices/delete_invoice/${invoice.id}`, {
+    const response = await fetch(`${config.public.apiBase}/api/estimates/delete_estimate/${estimateId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,  
@@ -430,191 +531,62 @@ async function confirmDelete(invoice) {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Failed to delete invoice');
+      throw new Error(error.message || 'Failed to delete estimate');
     }
 
-    await fetchInvoices();
-    openOptionsForInvoice.value = null;
+    await fetchEstimates();
+    openOptionsForEstimate.value = null;
   } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to delete invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error deleting invoice:', error);
+    handleError(error);
   }
 }
 
-async function voidInvoice(invoiceId) {
-  const reason = prompt('Please provide a reason for voiding this invoice:')
-  if (!reason) return // User cancelled the prompt
+function openNewEstimateModal() {
+  showEditEstimateModal.value = false
+  showNewEstimateModal.value = true
+}
 
+function closeNewEstimateModal() {
+  showNewEstimateModal.value = false
+}
+
+async function handleCreateEstimate(estimateData) {
   try {
     const token = await getIdToken()
-    const response = await fetch(`${config.public.apiBase}/api/invoices/void/${invoiceId}`, {
+    const mappedData = mapEstimateToBaseDocument(estimateData)
+
+    const response = await fetch(`${config.public.apiBase}/api/estimates/create_estimate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ void_reason: reason })
+      body: JSON.stringify(mappedData)
     })
 
-    const data = await response.json()
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to void invoice')
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to create estimate')
     }
 
-    await fetchInvoices()
-    openOptionsForInvoice.value = null
+    await fetchEstimates()
+    closeNewEstimateModal()
   } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to void invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error voiding invoice:', error)
+    handleError(error)
   }
 }
 
-async function sendInvoice(invoice) {
-  if (!confirm(`Are you sure you want to send invoice ${invoice.invoice_no}?`)) {
-    return;
+function handleError(error) {
+  if (error.message === 'No authenticated user') {
+    errorMessage.value = 'Please log in to perform this action'
+  } else {
+    errorMessage.value = error.message
   }
-
-  try {
-    const token = await getIdToken()
-    const response = await fetch(`${config.public.apiBase}/api/invoices/send/${invoice.id}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to send invoice');
-    }
-
-    await fetchInvoices();
-    openOptionsForInvoice.value = null;
-  } catch (error) {
-    errorMessage.value = error.message;
-    console.error('Error sending invoice:', error);
-  }
+  console.error('Error:', error)
 }
 
-async function postInvoice(invoiceId) {
-  try {
-    const token = await getIdToken()
-    const response = await fetch(`${config.public.apiBase}/api/invoices/post/${invoiceId}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    const data = await response.json()
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to post invoice')
-    }
-
-    await fetchInvoices()
-    openOptionsForInvoice.value = null
-  } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to post invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error posting invoice:', error)
-  }
-}
-
-function openNewInvoiceModal() {
-  showEditInvoiceModal.value = false
-  showPayInvoiceModal.value = false
-  showNewInvoiceModal.value = true
-}
-
-function closeNewInvoiceModal() {
-  showNewInvoiceModal.value = false
-}
-
-async function handleCreateInvoice(invoiceData) {
-  try {
-    const token = await getIdToken()
-    const response = await fetch(`${config.public.apiBase}/api/invoices/create_invoice`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(invoiceData)
-    })
-
-    const data = await response.json()
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to create invoice')
-    }
-
-    await fetchInvoices()
-    closeNewInvoiceModal()
-  } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to create invoices'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error creating invoice:', error)
-  }
-}
-
-function payInvoice(invoice) {
-  showEditInvoiceModal.value = false
-  showNewInvoiceModal.value = false
-  selectedPaymentInvoice.value = invoice
-  openOptionsForInvoice.value = null
-  showPayInvoiceModal.value = true
-}
-
-function closePayInvoiceModal() {
-  selectedPaymentInvoice.value = null
-  showPayInvoiceModal.value = false
-}
-
-async function handlePaymentRecorded(result) {
-  try {
-    const token = await getIdToken()
-    const response = await fetch(`${config.public.apiBase}/api/invoices/add_payment/${selectedPaymentInvoice.value.id}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(result)
-    })
-
-    const data = await response.json()
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to record payment')
-    }
-
-    await fetchInvoices()
-    closePayInvoiceModal()
-  } catch (error) {
-    if (error.message === 'No authenticated user') {
-      errorMessage.value = 'Please log in to record payments'
-    } else {
-      errorMessage.value = error.message
-    }
-    console.error('Error recording payment:', error)
-  }
-}
-
-// Watch for changes in search query or status to refresh invoices
+// Watch for changes in search query or status to refresh Estimates
 watch([searchQuery, selectedStatus], () => {
-  fetchInvoices()
+  fetchEstimates()
 })
 </script>

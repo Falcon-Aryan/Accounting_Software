@@ -4,7 +4,7 @@
     <div class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white">
       <!-- Modal Header -->
       <div class="flex justify-between items-center p-4 border-b">
-        <h2 class="text-xl font-semibold">Pay Invoice {{ invoice?.invoice_no }}</h2>
+        <h2 class="text-xl font-semibold">Pay Invoice #{{ invoice?.id }}</h2>
         <button @click="close" class="text-gray-500 hover:text-gray-700">
           <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -112,6 +112,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRuntimeConfig } from '#app'
+import { getAuth } from 'firebase/auth'
 import BaseButton from '~/components/BaseButton.vue'
 
 const config = useRuntimeConfig()
@@ -152,33 +153,38 @@ function close() {
 
 async function handleSubmit() {
   try {
-    errorMessage.value = ''
+    const auth = getAuth()
+    const token = await auth.currentUser?.getIdToken()
     
-    // Validate payment amount
-    if (parseFloat(form.value.amount) > props.invoice.balance_due) {
-      errorMessage.value = 'Payment amount cannot exceed the balance due'
+    if (!token) {
+      errorMessage.value = 'Authentication required'
       return
     }
 
     const response = await fetch(`${config.public.apiBase}/api/invoices/${props.invoice.id}/add_payment`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(form.value)
+      body: JSON.stringify({
+        amount: parseFloat(form.value.amount),
+        date: form.value.payment_date,
+        payment_method: form.value.payment_method,
+        notes: form.value.notes
+      })
     })
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.message || 'Failed to record payment')
+      throw new Error(error.error || 'Failed to record payment')
     }
 
-    const result = await response.json()
-    emit('payment-recorded', result)
+    const updatedInvoice = await response.json()
+    emit('payment-recorded', updatedInvoice)
     close()
   } catch (error) {
     errorMessage.value = error.message
-    console.error('Error recording payment:', error)
   }
 }
 </script>

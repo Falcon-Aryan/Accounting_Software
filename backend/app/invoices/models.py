@@ -12,6 +12,7 @@ INVOICE_STATUSES = [
     'draft',
     'sent',
     'paid',
+    'partially_paid',
     'overdue',
     'void'
 ]
@@ -255,7 +256,6 @@ class Invoice(BaseDocument):
                 'updated_at': data.get('updated_at'),
                 'status': data.get('status', 'draft'),
                 'payment_terms': data.get('payment_terms', 'net_30'),
-                'subtotal': data.get('subtotal', 0.0),
                 'total': data.get('total', 0.0),
                 'balance_due': data.get('balance_due', 0.0),
                 'date': data.get('date', '')

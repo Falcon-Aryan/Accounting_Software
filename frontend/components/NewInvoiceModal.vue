@@ -88,18 +88,30 @@
           required
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
         >
-          <option value="" disabled>Select status</option>
+          <option value="Select status" disabled>Select status</option>
           <option value="draft">Draft</option>
           <option value="sent">Sent</option>
           <option value="paid">Paid</option>
+          <option value="partial">Partially Paid</option>
           <option value="overdue">Overdue</option>
-          <option value="cancelled">Cancelled</option>
+          <option value="void">Void</option>
         </select>
       </div>
 
-      <!-- Products Table -->
+      <!-- Add Notes Section -->
       <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Products</label>
+        <label class="block text-sm font-medium text-gray-700">Notes</label>
+        <textarea
+          v-model="form.notes"
+          rows="3"
+          class="w-full px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500"
+          placeholder="Add any notes for this invoice..."
+        ></textarea>
+      </div>
+
+      <!-- Line Items Table -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Line Items</label>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
@@ -229,6 +241,7 @@ const config = useRuntimeConfig()
 const auth = getAuth()
 
 const isSubmitting = ref(false)
+const errorMessage = ref('')
 
 // Reactive state
 const customers = ref([])
@@ -239,6 +252,7 @@ const form = ref({
   due_date: new Date().toISOString().split('T')[0],
   payment_terms: 'due_on_receipt',
   status: 'draft',
+  notes: '',
   line_items: [{
     id: '',
     description: '',
@@ -304,11 +318,7 @@ async function fetchProducts() {
       products.value = data.products
     }
   } catch (error) {
-    if (error.message === 'No authenticated user') {
-      console.error('Please log in to fetch products')
-    } else {
-      console.error('Error fetching products:', error)
-    }
+    handleError(error)
   }
 }
 
@@ -424,18 +434,16 @@ async function handleSubmit() {
         quantity: Number(p.quantity),
         total: Number(p.unit_price) * Number(p.quantity)
       })),
-      subtotal: calculateTotal.value,
       total: calculateTotal.value,
       balance_due: calculateTotal.value,
-      notes: '',
+      notes: form.value.notes,
     }
   emit('save', invoiceData)
   close()
   } catch (error) {
-  console.error('Error creating invoice:', error)
-  alert(error.message || 'Failed to create invoice')
+    handleError(error)
   } finally {
-  isSubmitting.value = false
+    isSubmitting.value = false
   }
 }
 
@@ -446,6 +454,7 @@ function close() {
     due_date: new Date().toISOString().split('T')[0],
     payment_terms: 'due_on_receipt',
     status: 'draft',
+    notes: '',
     line_items: [{
       id: '',
       description: '',
@@ -456,19 +465,13 @@ function close() {
   emit('close')
 }
 
-function resetForm() {
-  form.value = {
-    customer_name: '',
-    date: new Date().toISOString().split('T')[0],
-    due_date: '',
-    line_items: [{
-      id: '',
-      description: '',
-      unit_price: '',
-      quantity: 1
-    }],
-    status: '',
-    payment_terms: 'due_on_receipt'
+
+function handleError(error) {
+  console.error('Operation failed:', error)
+  if (error.message === 'No authenticated user') {
+    errorMessage.value = 'Please log in to continue'
+  } else {
+    errorMessage.value = error.message || 'An error occurred'
   }
 }
 

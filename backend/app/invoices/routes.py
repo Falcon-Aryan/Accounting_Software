@@ -10,7 +10,7 @@ from . import invoices_bp
 from .models import Invoice, InvoicesSummary, Payment, INVOICE_STATUSES, PAYMENT_METHODS, PAYMENT_TERMS
 from app.transactions.models import Transaction, TransactionType, TransactionSubType, TransactionEntry
 from app.chart_of_accounts.models import Account
-from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions, post_transaction
+from app.transactions.routes import create_transaction_direct, load_transactions, save_transactions, post_transaction, generate_transaction_id
 from app.chart_of_accounts.routes import load_chart_of_accounts
 from app.products.routes import load_products
 from app.base.base_models import LineItem
@@ -32,6 +32,7 @@ def get_system_accounts(uid: str = None):
     """Get system accounts, optionally for a specific user"""
     try:
         accounts = load_chart_of_accounts(uid).get('accounts', []) if uid else []
+
         ar_account = next((acc for acc in accounts if acc['accountType'] == 'Accounts Receivable' and acc['isDefault']), None)
         ap_account = next((acc for acc in accounts if acc['accountType'] == 'Accounts Payable' and acc['isDefault']), None)
         sales_account = next((acc for acc in accounts if acc['accountType'] == 'Income' and acc['isDefault']), None)
@@ -43,32 +44,32 @@ def get_system_accounts(uid: str = None):
             raise Exception("Required system accounts not found in chart of accounts")
             
         return {
-            'ACCOUNTS_RECEIVABLE_ID': ar_account['id'],
-            'ACCOUNTS_PAYABLE_ID': ap_account['id'],
-            'SALES_REVENUE_ID': sales_account['id'],
-            'COGS_ID': cogs_account['id'],
-            'INVENTORY_ASSET_ID': inventory_account['id'],
-            'CASH_AND_BANK_ID': cash_account['id']
+            'ACCOUNTS_RECEIVABLE_ID': ar_account,
+            'ACCOUNTS_PAYABLE_ID': ap_account,
+            'SALES_REVENUE_ID': sales_account,
+            'COGS_ID': cogs_account,
+            'INVENTORY_ASSET_ID': inventory_account,
+            'CASH_AND_BANK_ID': cash_account
         }
     except Exception as e:
         # Fallback values in case of error - these should match your chart of accounts
         return {
-            'ACCOUNTS_RECEIVABLE_ID': "1100-0001",  # Accounts Receivable
-            'ACCOUNTS_PAYABLE_ID': "2100-0001",     # Accounts Payable
-            'SALES_REVENUE_ID': "4000-0001",        # Sales Revenue
-            'COGS_ID': "5000-0001",                 # Cost of Goods Sold
-            'INVENTORY_ASSET_ID': "1200-0001",      # Inventory Asset
-            'CASH_AND_BANK_ID': "1000-0001"         # Cash and Bank
+            'ar_account': {'id': "1100-0001", 'name': "Accounts Receivable", 'accountType': "Accounts Receivable"},
+            'ap_account': {'id': "2100-0001", 'name': "Accounts Payable", 'accountType': "Accounts Payable"},
+            'sales_account': {'id': "4000-0001", 'name': "Sales Revenue", 'accountType': "Income"},
+            'cogs_account': {'id': "5000-0001", 'name': "Cost of Goods Sold", 'accountType': "Cost of Goods Sold"},
+            'inventory_account': {'id': "1200-0001", 'name': "Inventory Asset", 'accountType': "Other Current Asset"},
+            'cash_account': {'id': "1000-0001", 'name': "Cash and Bank", 'accountType': "Bank"}
         }
 
 # Initialize system accounts with fallback values
 system_accounts = get_system_accounts()  # Don't pass uid during module initialization
-ACCOUNTS_RECEIVABLE_ID = system_accounts['ACCOUNTS_RECEIVABLE_ID']
-ACCOUNTS_PAYABLE_ID = system_accounts['ACCOUNTS_PAYABLE_ID']
-SALES_REVENUE_ID = system_accounts['SALES_REVENUE_ID']
-COGS_ID = system_accounts['COGS_ID']
-INVENTORY_ASSET_ID = system_accounts['INVENTORY_ASSET_ID']
-CASH_AND_BANK_ID = system_accounts['CASH_AND_BANK_ID']
+ACCOUNTS_RECEIVABLE_ID = system_accounts['ar_account']
+ACCOUNTS_PAYABLE_ID = system_accounts['ap_account']
+SALES_REVENUE_ID = system_accounts['sales_account']
+COGS_ID = system_accounts['cogs_account']
+INVENTORY_ASSET_ID = system_accounts['inventory_account']
+CASH_AND_BANK_ID = system_accounts['cash_account']
 
 def get_current_system_accounts():
     """Get current system accounts for the authenticated user"""
@@ -263,72 +264,98 @@ def validate_account_id(account_id: str, account_type: str) -> str:
         print(f"Error validating account ID: {str(e)}")
         return SALES_REVENUE_ID if account_type == 'income' else ACCOUNTS_RECEIVABLE_ID
 
-def create_invoice_transaction(invoice_data: Dict, sub_type: str = 'invoice_draft') -> None:
+def create_invoice_transaction(invoice: Invoice, uid: str, sub_type: str = 'invoice_draft') -> None:
     """Create a transaction record for an invoice"""
     try:
+        # Get invoice data
+        accounts = get_system_accounts(uid)
+        if not accounts:
+            raise ValueError("System accounts not found")
+
         # Calculate total amount
-        total_amount = sum(float(item.get('unit_price', 0)) * float(item.get('quantity', 0)) 
-                          for item in invoice_data.get('line_items', []))
+        total_amount = invoice.total
 
         # Create entries list
         entries = []
         
         # Add revenue entries
         entries.extend([
-            {
-                'accountId': ACCOUNTS_RECEIVABLE_ID,
-                'amount': total_amount,
-                'type': 'debit',
-                'description': f"Invoice {invoice_data['invoice_no']} - Revenue"
-            },
-            {
-                'accountId': SALES_REVENUE_ID,
-                'amount': total_amount,
-                'type': 'credit',
-                'description': f"Invoice {invoice_data['invoice_no']} - Revenue"
-            }
+            TransactionEntry(
+                accountId=accounts['ACCOUNTS_RECEIVABLE_ID']['id'],
+                accountName=accounts['ACCOUNTS_RECEIVABLE_ID']['name'],
+                amount=total_amount,
+                type='debit',
+                description=f"Invoice {invoice.invoice_no} - Accounts Receivable"
+            ),
+            TransactionEntry(
+                accountId=accounts['SALES_REVENUE_ID']['id'],
+                accountName=accounts['SALES_REVENUE_ID']['name'],
+                amount=total_amount,
+                type='credit',
+                description=f"Invoice {invoice.invoice_no} - Sales Revenue"
+            )
         ])
         
         # Add COGS entries only for inventory items
         total_cost = 0
-        for item in invoice_data.get('line_items', []):
-            if item.get('type') == 'inventory_item':
-                cost_price = float(item.get('cost_price', 0))
-                quantity = float(item.get('quantity', 0))
-                cost_amount = cost_price * quantity
-                total_cost += cost_amount
+        try:
+            products = load_products().get('products', []) 
+
+            for item in invoice.line_items:
+                product = next((p for p in products if p['id'] == item.product_id), None)
+                if product and product.get('type') == 'inventory_item':
+                    cost_amount = float(product.get('cost_price', 0)) * item.quantity
+                    total_cost += cost_amount
+        except Exception as e:
+            print(f"Error calculating COGS: {str(e)}")
         
         if total_cost > 0:
             entries.extend([
-                {
-                    'accountId': COGS_ID,
-                    'amount': total_cost,
-                    'type': 'debit',
-                    'description': f"Invoice {invoice_data['invoice_no']} - Cost of Goods Sold"
-                },
-                {
-                    'accountId': INVENTORY_ASSET_ID,
-                    'amount': total_cost,
-                    'type': 'credit',
-                    'description': f"Invoice {invoice_data['invoice_no']} - Inventory Reduction"
-                }
+                TransactionEntry(
+                    accountId=accounts['COGS_ID']['id'],
+                    accountName=accounts['COGS_ID']['name'],
+                    amount=total_cost,
+                    type='debit',
+                    description=f"Invoice {invoice.invoice_no} - COGS"
+                ),
+                TransactionEntry(
+                    accountId=accounts['INVENTORY_ASSET_ID']['id'],
+                    accountName=accounts['INVENTORY_ASSET_ID']['name'],
+                    amount=total_cost,
+                    type='credit',
+                    description=f"Invoice {invoice.invoice_no} - Inventory"
+                )
             ])
         
         # Create transaction
-        transaction_data = {
-            'date': invoice_data['invoice_date'],
-            'description': f"Invoice {invoice_data['invoice_no']} created",
-            'transaction_type': TransactionType.INVOICE.value,
-            'sub_type': sub_type,
-            'reference_type': 'invoice',
-            'reference_id': invoice_data['id'],
-            'status': 'draft',
-            'customer_name': invoice_data.get('customer_name', ''),
-            'line_items': invoice_data.get('line_items', []),
-            'entries': entries,
-            'amount': total_amount
-        }
-        create_transaction_direct(transaction_data)
+        transaction = Transaction(
+            id=generate_transaction_id(),
+            date=invoice.invoice_date,
+            description=f"Invoice {invoice.invoice_no}",
+            transaction_type=TransactionType.INVOICE.value,
+            sub_type=sub_type,
+            reference_type='invoice',
+            reference_id=invoice.id,
+            status='draft' if invoice.status == 'draft' else 'posted',
+            customer_name=invoice.customer_name,
+            amount=total_amount,
+            entries=entries,
+            invoice_total=total_amount,
+            invoice_paid=total_amount - invoice.balance_due,
+            invoice_balance=invoice.balance_due,
+            invoice_status=invoice.status,
+            last_payment_date=invoice.last_payment_date
+        ).to_dict()
+
+        return transaction
+        
+        # transactions_data = Transaction.load_user_transactions(uid)
+        # transactions_data['transactions'].append(transaction.to_dict())
+        # Transaction.save_user_transactions(uid, transactions_data)
+
+        # if invoice.status in ['sent', 'paid']:
+        #     post_transaction(transaction.id, uid)
+
     except Exception as e:
         print(f"Error in create_transaction_direct: {str(e)}")
         raise
@@ -336,31 +363,112 @@ def create_invoice_transaction(invoice_data: Dict, sub_type: str = 'invoice_draf
 def update_invoice_transaction(invoice_data: Dict, sub_type: str) -> None:
     """Update the transaction record for an invoice"""
     try:
-        # Delete old transaction
-        transactions = load_transactions()
-        transactions['transactions'] = [t for t in transactions['transactions'] 
-                                     if not (t.get('reference_type') == 'invoice' and 
-                                           t.get('reference_id') == invoice_data['id'])]
-        save_transactions(transactions)
+        uid = get_user_id()
+        if not uid:
+            raise ValueError("User ID not found")
         
-        # Create new transaction
-        create_invoice_transaction(invoice_data, sub_type)
+        invoice = Invoice.from_dict(invoice_data)
+
+        new_transaction = create_invoice_transaction(invoice, uid, sub_type)
+        if not new_transaction:
+            return
+
+        transactions_data = Transaction.load_user_transactions(uid)
+        transactions = transactions_data.get('transactions', [])
+
+        idx = next((i for i, t in enumerate(transactions) 
+                   if t.get('reference_type') == 'invoice' 
+                   and t.get('reference_id') == invoice_data['id']), None)
+
+        if idx is not None:
+            transactions[idx] = new_transaction
+        else:
+            transactions.append(new_transaction)
+
+        Transaction.save_user_transactions(uid, {'transactions': transactions})
+
     except Exception as e:
         print(f"Error updating invoice transaction: {str(e)}")
         raise
 
-def delete_invoice_transaction(invoice_id: str) -> None:
+def delete_invoice_transaction(invoice_id: str, uid: str) -> None:
     """Delete the transaction record for an invoice and its payments"""
     try:
-        transactions = load_transactions()
+        # Load transactions
+        transactions_data = Transaction.load_user_transactions(uid)
+        transactions = transactions_data.get('transactions', [])
+
         # Remove both invoice and payment transactions
-        transactions['transactions'] = [t for t in transactions['transactions'] 
-                                     if not ((t.get('reference_type') == 'invoice' and t.get('reference_id') == invoice_id) or
-                                           (t.get('transaction_type') == TransactionType.PAYMENT_RECEIVED.value and 
-                                            t.get('reference_id', '').startswith(f"{invoice_id}_")))]
-        save_transactions(transactions)
+        filtered_transactions = [
+            t for t in transactions 
+            if not (
+                (t.get('reference_type') == 'invoice' and t.get('reference_id') == invoice_id) or
+                (t.get('transaction_type') == TransactionType.PAYMENT_RECEIVED.value and 
+                 t.get('reference_id', '').startswith(f"{invoice_id}_"))
+            )
+        ]
+
+        # Save updated transactions
+        Transaction.save_user_transactions(uid, {'transactions': filtered_transactions})
+
     except Exception as e:
         print(f"Error deleting invoice transaction: {str(e)}")
+        raise
+
+def create_payment_transaction(invoice: Invoice, payment: Payment, uid: str) -> None:
+    """Create a transaction record for a payment"""
+    try:
+        # Get system accounts
+        accounts = get_system_accounts(uid)
+        if not accounts:
+            raise ValueError("System accounts not found")
+
+        # Create entries list
+        entries = [
+            TransactionEntry(
+                accountId=accounts['cash_account']['id'],
+                accountName=accounts['cash_account']['name'],
+                amount=payment.amount,
+                type='debit',
+                description=f"Payment for Invoice {invoice.invoice_no}"
+            ),
+            TransactionEntry(
+                accountId=accounts['ar_account']['id'],
+                accountName=accounts['ar_account']['name'],
+                amount=payment.amount,
+                type='credit',
+                description=f"Payment for Invoice {invoice.invoice_no} - AR"
+            )
+        ]
+
+        # Create transaction
+        transaction = Transaction(
+            id=generate_transaction_id(),
+            date=payment.date,
+            description=f"Payment for Invoice {invoice.invoice_no}",
+            transaction_type=TransactionType.PAYMENT_RECEIVED.value,
+            sub_type='customer_payment',
+            reference_type='payment',
+            reference_id=f"{invoice.id}_{payment.id}",
+            status='posted',
+            customer_name=invoice.customer_name,
+            amount=payment.amount,
+            entries=entries,
+            payment_method=payment.payment_method,
+            payment_reference=payment.reference_number
+        )
+
+        # Save transaction
+        transactions_data = Transaction.load_user_transactions(uid)
+        transactions_data['transactions'].append(transaction.to_dict())
+        Transaction.save_user_transactions(uid, transactions_data)
+
+        # Update payment with transaction ID
+        payment.transaction_id = transaction.id
+
+    except Exception as e:
+        print(f"Error creating payment transaction: {str(e)}")
+        raise
 
 # Interface Routes
 @invoices_bp.route('/status_types', methods=['GET'])
@@ -390,6 +498,7 @@ def create_invoice():
     try:
         # Get request data
         data = request.get_json()
+        
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
@@ -429,6 +538,15 @@ def create_invoice():
         
         # Save updated invoices
         save_invoices(uid, {'invoices': invoices})
+
+        transaction = create_invoice_transaction(invoice, uid)
+        if transaction:
+            transactions_data = Transaction.load_user_transactions(uid)
+            transactions_data['transactions'].append(transaction)
+            Transaction.save_user_transactions(uid, transactions_data)
+
+            if invoice.status in ['sent', 'paid']:
+                post_transaction(transaction['id'], uid)
         
         return jsonify(invoice_dict), 200
         
@@ -479,11 +597,9 @@ def update_invoice(id):
         # Save back with the same structure
         invoices_data['invoices'] = invoices
         save_invoices(uid, invoices_data)
-        
-        # Update transaction if status changed
-        if 'status' in data and data['status'] != current_invoice['status']:
-            update_invoice_transaction(updated_invoice, f"invoice_{data['status']}")
-        
+
+        update_invoice_transaction(updated_invoice, f'invoice_{updated_invoice["status"]}')
+
         return jsonify(updated_invoice)
         
     except Exception as e:
@@ -556,7 +672,7 @@ def delete_invoice(id):
         invoice.delete(uid)
         
         # Delete associated transaction
-        delete_invoice_transaction(id)
+        delete_invoice_transaction(invoice.id, uid)
         
         return jsonify({'message': 'Invoice deleted successfully'})
     except Exception as e:
@@ -759,6 +875,8 @@ def add_payment(id):
 
         # Update summary
         update_summary(invoices)
+
+        create_payment_transaction(invoice, payment, uid)
 
         return jsonify(invoice), 200
 

@@ -240,6 +240,24 @@ const form = ref({
 
 const isSubmitting = ref(false)
 
+const validateEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+const validatePhone = (phone) => {
+  // Allows formats like: +1-234-567-8901, (123) 456-7890, 123.456.7890, 1234567890
+  const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4}$/
+  return phoneRegex.test(phone)
+}
+
+const validateWebsite = (website) => {
+  if (!website) return true // Website is optional
+  // Validates URLs starting with http:// or https://
+  const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/
+  return urlRegex.test(website)
+}
+
 // Watch for use_billing_for_shipping changes
 watch(() => form.value.use_billing_for_shipping, (newVal) => {
   if (newVal) {
@@ -262,6 +280,18 @@ const handleSubmit = async () => {
     errorMessage.value = ''
     if (!form.value.first_name || !form.value.last_name || !form.value.email || !form.value.phone) {
       throw new Error('Please fill in all required fields')
+    }
+
+    if (!validateEmail(form.value.email)) {
+      throw new Error('Please enter a valid email address')
+    }
+
+    if (!validatePhone(form.value.phone)) {
+      throw new Error('Please enter a valid phone number')
+    }
+
+    if (form.value.website && !validateWebsite(form.value.website)) {
+      throw new Error('Please enter a valid website URL')
     }
 
     // Billing address validation

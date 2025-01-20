@@ -128,12 +128,12 @@
   />
 
   <EditCustomerModal
+    ref="editCustomerModalRef"
     v-if="selectedCustomer"
-    :show="showEditCustomerModal"
+    v-model="showEditCustomerModal"
     :customer="selectedCustomer"
-    @close="closeEditCustomerModal"
     @submit="handleEditCustomer"
-  />
+    />
 </template>
 
 <script setup>
@@ -158,6 +158,7 @@ const selectedCustomer = ref(null)
 const openDropdownId = ref(null)
 const isLoading = ref(false)
 const newCustomerModalRef = ref(null)
+const editCustomerModalRef = ref(null)
 
 // Computed
 const filteredCustomers = computed(() => {
@@ -238,10 +239,6 @@ const editCustomer = (customer) => {
   openDropdownId.value = null
 }
 
-const closeEditCustomerModal = () => {
-  showEditCustomerModal.value = false
-  selectedCustomer.value = null
-}
 
 const handleNewCustomer = async (customerData) => {
   try {
@@ -260,12 +257,19 @@ const handleNewCustomer = async (customerData) => {
       customers.value.push(data.customer)
       closeNewCustomerModal()
       showSuccessToast('Customer created successfully')
+      return true
     } else {
-      showErrorToast(data.error || 'Failed to create customer')
+      if (newCustomerModalRef.value) {
+        newCustomerModalRef.value.setError(data.error || 'Failed to create customer')    
+      }
+      return false
     }
   } catch (error) {
     console.error('Error creating customer:', error)
-    showErrorToast('Failed to create customer')
+    if (newCustomerModalRef.value) {
+      newCustomerModalRef.value.setError('Failed to create customer')
+    }
+    return false
   }
 }
 
@@ -287,14 +291,22 @@ const handleEditCustomer = async (customerData) => {
       if (index !== -1) {
         customers.value[index] = data.customer
       }
-      closeEditCustomerModal()
+      showEditCustomerModal.value = false 
+      selectedCustomer.value = null 
       showSuccessToast('Customer updated successfully')
+      return true
     } else {
-      showErrorToast(data.error || 'Failed to update customer')
+      if (editCustomerModalRef.value) {
+        editCustomerModalRef.value.setError(data.error || 'Failed to update customer')
+      }
+      return false
     }
   } catch (error) {
     console.error('Error updating customer:', error)
-    showErrorToast('Failed to update customer')
+    if (editCustomerModalRef.value) {
+      editCustomerModalRef.value.setError('Failed to update customer')
+    }
+    return false
   }
 }
 

@@ -63,7 +63,7 @@
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div class="bg-white shadow rounded-lg p-6">
-        <h2 class="text-lg font-medium mb-4">Welcome {{ user?.email }}</h2>
+        <h2 class="text-lg font-medium mb-4">Welcome {{ currentUser?.email }}</h2>
         
         <!-- Quick Actions -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -97,19 +97,26 @@ import { useFirebaseAuth } from '../composables/useFirebaseAuth'
 import { useRuntimeConfig } from '#app'
 import { initializeApp } from 'firebase/app'
 import { firebaseConfig } from '../config/firebase.config'
-import { getAuth } from 'firebase/auth'
+import { getAuth, onAuthStateChanged } from 'firebase/auth'
 
 const { user, logout } = useFirebaseAuth()
-
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig)
-const auth = getAuth(app)
 const config = useRuntimeConfig()
+const currentUser = ref(null)
 const recentActivity = ref([])
 const estimatesSummary = ref({})
 const invoicesSummary = ref({})
 const customersSummary = ref({})
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig)
+const auth = getAuth(app)
+
+onAuthStateChanged(auth, (user) => {
+  currentUser.value = user
+  if (user) {
+    fetchDashboardData()
+  }
+})
 
 async function getIdToken() {
   const user = auth.currentUser
@@ -118,51 +125,49 @@ async function getIdToken() {
   }
   return user.getIdToken()
 }
-
-const token = await getIdToken()
-onMounted(async () => {
+async function fetchDashboardData() {
   try {
+    const token = await getIdToken()
+    
     // Fetch recent activity data
-    fetch(`${config.public.apiBase}/api/activity/recent`, {
+    const activityResponse = await fetch(`${config.public.apiBase}/api/activity/recent`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     })
-      .then(response => response.json())
-      .then(data => recentActivity.value = data)
-      .catch(error => console.error('Error fetching recent activity:', error))
+    recentActivity.value = await activityResponse.json()
 
     // Fetch estimates summary
-    fetch(`${config.public.apiBase}/estimates/summary`, {
+    const estimatesResponse = await fetch(`${config.public.apiBase}/api/estimates/summary`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     })
-      .then(response => response.json())
-      .then(data => estimatesSummary.value = data)
-      .catch(error => console.error('Error fetching estimates summary:', error))
+    estimatesSummary.value = await estimatesResponse.json()
 
     // Fetch invoices summary
-    fetch(`${config.public.apiBase}/invoices/summary`, {
+    const invoicesResponse = await fetch(`${config.public.apiBase}/api/invoices/summary`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     })
-      .then(response => response.json())
-      .then(data => invoicesSummary.value = data)
-      .catch(error => console.error('Error fetching invoices summary:', error))
+    invoicesSummary.value = await invoicesResponse.json()
 
     // Fetch customers summary
-    fetch(`${config.public.apiBase}/api/customers/summary`, {
+    const customersResponse = await fetch(`${config.public.apiBase}/api/customers/summary`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     })
-      .then(response => response.json())
-      .then(data => customersSummary.value = data)
-      .catch(error => console.error('Error fetching customers summary:', error))
+    customersSummary.value = await customersResponse.json()
   } catch (error) {
     console.error('Error fetching dashboard data:', error)
+  }
+}
+
+onMounted(() => {
+  if (auth.currentUser) {
+    fetchDashboardData()
   }
 })
 

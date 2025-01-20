@@ -9,7 +9,7 @@
       <p class="text-sm text-red-600">{{ errorMessage }}</p>
     </div>
 
-    <form @submit.prevent="handleSubmit" class="space-y-4">
+    <form @submit.prevent="handleSubmit" class="space-y-4" novalidate>
       <!-- Personal Information -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -17,7 +17,6 @@
           <input
             type="text"
             v-model="form.first_name"
-            required
             class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
           />
         </div>
@@ -26,7 +25,6 @@
           <input
             type="text"
             v-model="form.last_name"
-            required
             class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
           />
         </div>
@@ -39,7 +37,6 @@
           <input
             type="email"
             v-model="form.email"
-            required
             class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
           />
         </div>
@@ -48,7 +45,6 @@
           <input
             type="tel"
             v-model="form.phone"
-            required
             class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
           />
         </div>
@@ -83,7 +79,6 @@
             <input
               type="text"
               v-model="form.billing_address.street"
-              required
               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
             />
           </div>
@@ -92,7 +87,6 @@
             <input
               type="text"
               v-model="form.billing_address.city"
-              required
               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
             />
           </div>
@@ -101,7 +95,6 @@
             <input
               type="text"
               v-model="form.billing_address.state"
-              required
               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
             />
           </div>
@@ -110,7 +103,6 @@
             <input
               type="text"
               v-model="form.billing_address.postal_code"
-              required
               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
             />
           </div>
@@ -119,7 +111,6 @@
             <input
               type="text"
               v-model="form.billing_address.country"
-              required
               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
             />
           </div>
@@ -145,7 +136,6 @@
               <input
                 type="text"
                 v-model="form.shipping_address.street"
-                required
                 class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
               />
             </div>
@@ -154,7 +144,6 @@
               <input
                 type="text"
                 v-model="form.shipping_address.city"
-                required
                 class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
               />
             </div>
@@ -163,7 +152,6 @@
               <input
                 type="text"
                 v-model="form.shipping_address.state"
-                required
                 class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
               />
             </div>
@@ -172,7 +160,6 @@
               <input
                 type="text"
                 v-model="form.shipping_address.postal_code"
-                required
                 class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
               />
             </div>
@@ -181,7 +168,6 @@
               <input
                 type="text"
                 v-model="form.shipping_address.country"
-                required
                 class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
               />
             </div>
@@ -201,8 +187,9 @@
         <BaseButton 
           type="submit"
           variant="primary"
+          :disabled="isSubmitting"
         >
-          Add Customer
+          {{ isSubmitting ? 'Adding Customer...' : 'Add Customer' }}
         </BaseButton>
       </div>
     </form>
@@ -232,6 +219,7 @@ const form = ref({
   last_name: '',
   email: '',
   phone: '',
+  company_name: '',
   website: '',
   use_billing_for_shipping: true,
   billing_address: {
@@ -249,6 +237,8 @@ const form = ref({
     country: 'United States'
   }
 })
+
+const isSubmitting = ref(false)
 
 // Watch for use_billing_for_shipping changes
 watch(() => form.value.use_billing_for_shipping, (newVal) => {
@@ -268,29 +258,34 @@ const errorMessage = ref('')
 
 const handleSubmit = async () => {
   try {
-    const auth = getAuth()
-    const idToken = await auth.currentUser?.getIdToken()
-
-    const response = await fetch(`${config.public.apiBase}/api/customers/create_customer`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`
-      },
-      body: JSON.stringify(form.value)
-    })
-
-    if (response.ok) {
-      const newCustomer = await response.json()
-      emit('submit', newCustomer)
-      resetForm()
-    } else {
-      const errorData = await response.text()
-      setError(errorData || 'Failed to create customer')
+    isSubmitting.value = true
+    errorMessage.value = ''
+    if (!form.value.first_name || !form.value.last_name || !form.value.email || !form.value.phone) {
+      throw new Error('Please fill in all required fields')
     }
+
+    // Billing address validation
+    if (!form.value.billing_address.street || !form.value.billing_address.city ||
+        !form.value.billing_address.state || !form.value.billing_address.postal_code ||
+        !form.value.billing_address.country) {
+      throw new Error('Please complete the billing address')
+    }
+
+    // Shipping address validation only if not using billing address
+    if (!form.value.use_billing_for_shipping) {
+      if (!form.value.shipping_address.street || !form.value.shipping_address.city ||
+          !form.value.shipping_address.state || !form.value.shipping_address.postal_code ||
+          !form.value.shipping_address.country) {
+        throw new Error('Please complete the shipping address')
+      }
+    }
+
+    emit('submit', form.value)
+    resetForm()
   } catch (error) {
-    console.error('Error creating customer:', error)
-    setError('An error occurred while creating the customer')
+    handleError(error)
+  } finally {
+    isSubmitting.value = false
   }
 }
 
@@ -318,6 +313,15 @@ const resetForm = () => {
     }
   }
   errorMessage.value = ''
+}
+
+function handleError(error) {
+  if (error.message === 'No authenticated user') {
+    errorMessage.value = 'Please log in to perform this action'
+  } else {
+    errorMessage.value = error.message
+  }
+  console.error('Error:', error)
 }
 
 const setError = (message) => {

@@ -333,11 +333,32 @@ const handleCreateItem = async (itemData) => {
       },
       body: JSON.stringify(itemData)
     })
-
+    
     if (!response.ok) throw new Error('Failed to create item')
 
     const newItem = await response.json()
-    items.value = [...items.value, newItem]
+
+    if (!itemData.sku) {
+      const autoSku = `SKU-${newItem.id}`
+      const updateResponse = await fetch(`${config.public.apiBase}/api/ProdServ/update_product/${newItem.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ ...newItem, sku: autoSku })
+      })
+
+      if (updateResponse.ok) {
+        const updatedItem = await updateResponse.json()
+        items.value = [...items.value, updatedItem]
+      } else {
+        items.value = [...items.value, newItem]
+      }
+    } else {
+      items.value = [...items.value, newItem]
+    }
+
     closeNewItemModal()
   } catch (error) {
     console.error('Error:', error)

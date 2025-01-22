@@ -42,6 +42,7 @@ yarn-error.log*
 .nuxt/
 .output/
 dist/
+node_modules/
 
 # Project specific
 backend/data/*
@@ -50,6 +51,7 @@ backend/data/*
 backend/config/serviceAccountKey.json
 backend/.env
 frontend/.env
+frontend/config/*
 
 # Logs
 *.log

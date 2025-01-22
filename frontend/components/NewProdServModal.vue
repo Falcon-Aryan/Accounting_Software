@@ -126,7 +126,7 @@
               </option>
             </template>
             <template v-else>
-              <option v-for="account in cogsAccounts" :key="account.id" :value="account.id">
+              <option v-for="account in inventoryExpenseAccounts" :key="account.id" :value="account.id">
                 {{ account.name }} --- {{ account.detailType }} --- {{ account.accountType }}
               </option>
             </template>
@@ -240,20 +240,26 @@ const props = defineProps({
 const emit = defineEmits(['close', 'create'])
 
 // Account type constants
-const SERVICE_ACCOUNT_TYPES = [
+const INCOME_ACCOUNT_TYPES = [
   'Income',
-  'Other Income',
-  'Other Current Liability',
+  'Other Income'
+]
+
+const EXPENSE_ACCOUNT_TYPES = [
   'Expense',
   'Other Expense',
   'Cost of Goods Sold'
+]
+
+const INVENTORY_ACCOUNT_TYPES = [
+  'Other Current Asset',
 ]
 
 // Account refs
 const serviceIncomeAccounts = ref([])
 const serviceExpenseAccounts = ref([])
 const inventoryIncomeAccounts = ref([])
-const cogsAccounts = ref([])
+const inventoryExpenseAccounts = ref([])
 const inventoryAssetAccounts = ref([])
 
 // Load accounts on component mount
@@ -271,33 +277,31 @@ onMounted(async () => {
 
     // Filter accounts for service items
     serviceIncomeAccounts.value = accounts.filter(acc => 
-      SERVICE_ACCOUNT_TYPES.includes(acc.accountType) && 
+      INCOME_ACCOUNT_TYPES.includes(acc.accountType) && 
       acc.active
     )
 
     // Filter accounts for service expense
     serviceExpenseAccounts.value = accounts.filter(acc => 
-      SERVICE_ACCOUNT_TYPES.includes(acc.accountType) && 
+      EXPENSE_ACCOUNT_TYPES.includes(acc.accountType) && 
       acc.active
     )
 
     // Filter accounts for inventory items
     inventoryIncomeAccounts.value = accounts.filter(acc => 
-      acc.active && 
-      acc.accountType === 'Income' && 
-      (acc.name.toLowerCase().includes('sales revenue') || 
-       acc.name.toLowerCase().includes('sales of product income'))
+      INCOME_ACCOUNT_TYPES.includes(acc.accountType) && 
+      acc.active
     )
 
     // Filter Cost of Goods Sold accounts
-    cogsAccounts.value = accounts.filter(acc => 
-      acc.accountType === 'Cost of Goods Sold' && 
-      acc.active
+    inventoryExpenseAccounts.value = accounts.filter(acc => 
+    EXPENSE_ACCOUNT_TYPES.includes(acc.accountType) && 
+    acc.active
     )
 
     // Filter Inventory Asset accounts
     inventoryAssetAccounts.value = accounts.filter(acc => 
-      acc.detailType === 'Inventory' && 
+      INVENTORY_ACCOUNT_TYPES.includes(acc.accountType) && 
       acc.active
     )
 
@@ -391,6 +395,10 @@ const showCostPriceError = computed(() => {
 const handleSubmit = () => {
   const formData = { ...form.value }
   
+  if (formData.sku) {
+    formData.sku = `SKU-${formData.sku}`
+  }
+
   // Remove inventory info if not an inventory item
   if (formData.type !== 'inventory_item') {
     delete formData.inventory_info

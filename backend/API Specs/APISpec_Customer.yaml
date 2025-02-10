@@ -1,0 +1,346 @@
+openapi: 3.0.0
+info:
+  title: Customer API Specification
+  version: 1.0.0
+  description: API specification for the customer management system
+
+components:
+  schemas:
+    Customer:
+      type: object
+      required:
+        - customer_id
+        - user_id
+        - first_name
+        - last_name
+        - customer_email
+        - phone
+        - billing_street
+        - billing_city
+        - billing_state
+        - billing_postal_code
+        - billing_country
+      properties:
+        customer_id:
+          type: string
+          description: Unique identifier for the customer (format CUSTXXXXXX-XXXXXX)
+        user_id:
+          type: string
+          description: ID of the user who owns this customer
+        first_name:
+          type: string
+          description: First name of the customer
+        last_name:
+          type: string
+          description: Last name of the customer
+        customer_email:
+          type: string
+          format: email
+          description: Email address of the customer
+        phone:
+          type: string
+          description: Phone number of the customer
+        company_name:
+          type: string
+          nullable: true
+          description: Optional company name
+        website:
+          type: string
+          nullable: true
+          description: Optional website URL
+        billing_street:
+          type: string
+          description: Billing street address
+        billing_city:
+          type: string
+          description: Billing city
+        billing_state:
+          type: string
+          description: Billing state/province
+        billing_postal_code:
+          type: string
+          description: Billing postal/ZIP code
+        billing_country:
+          type: string
+          description: Billing country
+        use_billing_for_shipping:
+          type: boolean
+          default: true
+          description: Whether to use billing address for shipping
+        shipping_street:
+          type: string
+          nullable: true
+          description: Shipping street address
+        shipping_city:
+          type: string
+          nullable: true
+          description: Shipping city
+        shipping_state:
+          type: string
+          nullable: true
+          description: Shipping state/province
+        shipping_postal_code:
+          type: string
+          nullable: true
+          description: Shipping postal/ZIP code
+        shipping_country:
+          type: string
+          nullable: true
+          description: Shipping country
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when customer was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when customer was last updated
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        missing_fields:
+          type: array
+          items:
+            type: string
+          description: List of missing required fields (only for 400 errors)
+
+paths:
+  /create_customer:
+    post:
+      summary: Create a new customer
+      description: Create a new customer with the given details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - first_name
+                - last_name
+                - customer_email
+                - phone
+                - billing_street
+                - billing_city
+                - billing_state
+                - billing_postal_code
+                - billing_country
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                customer_email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+                company_name:
+                  type: string
+                website:
+                  type: string
+                billing_street:
+                  type: string
+                billing_city:
+                  type: string
+                billing_state:
+                  type: string
+                billing_postal_code:
+                  type: string
+                billing_country:
+                  type: string
+                use_billing_for_shipping:
+                  type: boolean
+                  default: true
+                shipping_street:
+                  type: string
+                shipping_city:
+                  type: string
+                shipping_state:
+                  type: string
+                shipping_postal_code:
+                  type: string
+                shipping_country:
+                  type: string
+      responses:
+        '201':
+          description: Customer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Customer already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_customers:
+    get:
+      summary: Get all customers
+      description: Get all customers for the authenticated user
+      responses:
+        '200':
+          description: Successfully retrieved customers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+        '400':
+          description: Error retrieving customers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_customer/{customer_id}:
+    get:
+      summary: Get customer details
+      description: Get detailed information about a specific customer
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the customer to retrieve
+      responses:
+        '200':
+          description: Successfully retrieved customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error retrieving customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /update_customer/{customer_id}:
+    patch:
+      summary: Update customer details
+      description: Update details of a specific customer
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the customer to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                customer_email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+                company_name:
+                  type: string
+                website:
+                  type: string
+                billing_street:
+                  type: string
+                billing_city:
+                  type: string
+                billing_state:
+                  type: string
+                billing_postal_code:
+                  type: string
+                billing_country:
+                  type: string
+                use_billing_for_shipping:
+                  type: boolean
+                shipping_street:
+                  type: string
+                shipping_city:
+                  type: string
+                shipping_state:
+                  type: string
+                shipping_postal_code:
+                  type: string
+                shipping_country:
+                  type: string
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error updating customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /delete_customer/{customer_id}:
+    delete:
+      summary: Delete a customer
+      description: Delete a specific customer
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the customer to delete
+      responses:
+        '200':
+          description: Customer deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Customer deleted successfully
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error deleting customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

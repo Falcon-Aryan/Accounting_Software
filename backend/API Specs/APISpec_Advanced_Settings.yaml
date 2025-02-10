@@ -1,0 +1,239 @@
+openapi: 3.0.0
+info:
+  title: Advanced Settings API
+  description: API for managing advanced settings in the accounting software
+  version: 1.0.0
+
+servers:
+  - url: /api
+
+components:
+  schemas:
+    AdvancedSettings:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: ID of the user who owns these settings
+        fiscal_year_start:
+          type: string
+          enum:
+            - January
+            - February
+            - March
+            - April
+            - May
+            - June
+            - July
+            - August
+            - September
+            - October
+            - November
+            - December
+          default: January
+          description: Start month of fiscal year
+        income_tax_year_start:
+          type: string
+          enum:
+            - Same as fiscal year
+            - January
+            - February
+            - March
+            - April
+            - May
+            - June
+            - July
+            - August
+            - September
+            - October
+            - November
+            - December
+          default: Same as fiscal year
+          description: Start month of income tax year
+        accounting_method:
+          type: string
+          enum:
+            - Cash
+            - Accrual
+          default: Accrual
+          description: Accounting method used
+        tax_form:
+          type: string
+          enum:
+            - Sole Proprietor (Form 1040)
+            - Partnership (Form 1065)
+            - Corporation (Form 1120)
+            - S Corporation (Form 1120S)
+            - Non-Profit (Form 990)
+          default: Sole Proprietor (Form 1040)
+          description: Tax form type
+        tips_account:
+          type: string
+          default: Cash on Hand
+          description: Account for tracking tips
+        close_the_books:
+          type: boolean
+          default: false
+          description: Whether to close books at period end
+        enable_account_numbers:
+          type: boolean
+          default: true
+          description: Enable account numbers in chart of accounts
+        track_classes:
+          type: boolean
+          default: false
+          description: Enable class tracking
+        track_locations:
+          type: boolean
+          default: false
+          description: Enable location tracking
+        pre_fill_forms:
+          type: boolean
+          default: true
+          description: Auto-fill forms with saved data
+        apply_credits_automatically:
+          type: boolean
+          default: true
+          description: Automatically apply available credits
+        invoice_unbilled_activity:
+          type: boolean
+          default: false
+          description: Include unbilled activity in invoices
+        apply_bill_payments_automatically:
+          type: boolean
+          default: true
+          description: Automatically apply bill payments
+        organize_job_activity:
+          type: boolean
+          default: false
+          description: Organize activities by job
+        home_currency:
+          type: string
+          default: USD
+          description: Primary currency for the business
+        multicurrency:
+          type: boolean
+          default: false
+          description: Enable multi-currency support
+        date_format:
+          type: string
+          enum:
+            - MM/DD/YYYY
+            - DD/MM/YYYY
+            - YYYY-MM-DD
+          default: MM/DD/YYYY
+          description: Preferred date format
+        currency_format:
+          type: string
+          enum:
+            - $#,##0.00
+            - #,##0.00 €
+            - £#,##0.00
+            - ¥#,##0
+          default: $#,##0.00
+          description: Currency display format
+        customer_label:
+          type: string
+          default: Customer
+          description: Custom label for customers
+        duplicate_check_warning:
+          type: boolean
+          default: true
+          description: Show warning for duplicate checks
+        vendor_bill_warning:
+          type: boolean
+          default: true
+          description: Show warning for duplicate vendor bills
+        duplicate_journal_warning:
+          type: boolean
+          default: true
+          description: Show warning for duplicate journal entries
+        sign_out_after_inactivity:
+          type: string
+          enum:
+            - 30 minutes
+            - 1 hour
+            - 2 hours
+            - 3 hours
+            - 4 hours
+          default: 3 hours
+          description: Auto sign-out after inactivity period
+
+paths:
+  /advanced/create_advanced/{user_id}:
+    post:
+      summary: Create advanced settings for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvancedSettings'
+      responses:
+        '200':
+          description: Advanced settings created successfully
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+
+  /advanced/update_advanced/{user_id}:
+    patch:
+      summary: Update advanced settings for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvancedSettings'
+      responses:
+        '200':
+          description: Advanced settings updated successfully
+        '404':
+          description: Advanced settings not found
+
+  /advanced/delete_advanced/{user_id}:
+    delete:
+      summary: Delete advanced settings for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Advanced settings deleted successfully
+        '404':
+          description: Advanced settings not found
+
+  /advanced/get_advanced/{user_id}:
+    get:
+      summary: Get advanced settings for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Advanced settings details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdvancedSettings'
+        '404':
+          description: Advanced settings not found

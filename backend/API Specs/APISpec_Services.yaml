@@ -1,0 +1,246 @@
+openapi: 3.0.0
+info:
+  title: Services API Specification
+  version: 1.0.0
+  description: API specification for the services management system
+
+components:
+  schemas:
+    Service:
+      type: object
+      required:
+        - service_id
+        - user_id
+        - name
+        - price
+        - type
+      properties:
+        service_id:
+          type: string
+          description: Unique identifier for the service (format SERVXXXXXX-XXXXXX)
+        user_id:
+          type: string
+          description: ID of the user who owns this service
+        name:
+          type: string
+          description: Name of the service
+        price:
+          type: number
+          format: float
+          description: Price of the service
+        duration:
+          type: string
+          nullable: true
+          description: Optional duration of the service (e.g., "1 hour", "30 minutes")
+        description:
+          type: string
+          nullable: true
+          description: Optional service description
+        category:
+          type: array
+          items:
+            type: string
+          description: List of categories this service belongs to
+        type:
+          type: string
+          enum: [service]
+          description: Type identifier, always set to 'service'
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when service was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when service was last updated
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        missing_fields:
+          type: array
+          items:
+            type: string
+          description: List of missing required fields (only for 400 errors)
+
+paths:
+  /create_service:
+    post:
+      summary: Create a new service
+      description: Create a new service with the given details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - price
+              properties:
+                name:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                duration:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Service created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_services:
+    get:
+      summary: Get all services
+      description: Get all services for the authenticated user
+      responses:
+        '200':
+          description: Successfully retrieved services
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Service'
+        '400':
+          description: Error retrieving services
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_service/{service_id}:
+    get:
+      summary: Get service details
+      description: Get detailed information about a specific service
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the service to retrieve
+      responses:
+        '200':
+          description: Successfully retrieved service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error retrieving service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /update_service/{service_id}:
+    patch:
+      summary: Update service details
+      description: Update details of a specific service
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the service to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                duration:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Service updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error updating service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /delete_service/{service_id}:
+    delete:
+      summary: Delete a service
+      description: Delete a specific service
+      parameters:
+        - name: service_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the service to delete
+      responses:
+        '200':
+          description: Service deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Service deleted successfully
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error deleting service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

@@ -1,0 +1,322 @@
+openapi: 3.0.0
+info:
+  title: Chart of Accounts API
+  version: 1.0.0
+  description: API for managing the Chart of Accounts in the accounting system
+
+components:
+  schemas:
+    Account:
+      type: object
+      required:
+        - user_id
+        - account_id
+        - account_name
+        - account_type
+        - account_subtype
+        - account_number
+      properties:
+        user_id:
+          type: string
+          description: ID of the user who owns this account
+        account_id:
+          type: string
+          description: Unique identifier for the account (format ACC######-######)
+        account_name:
+          type: string
+          description: Name of the account
+        account_type:
+          type: string
+          description: Type of account (e.g., Bank, Accounts Receivable, etc.)
+          enum:
+            - Bank
+            - Accounts Receivable
+            - Other Current Asset
+            - Fixed Asset
+            - Other Asset
+            - Accounts payable
+            - Credit Card
+            - Other Current Liability
+            - Long Term Liabilities
+            - Equity
+            - Income
+            - Other Income
+            - Cost of Goods Sold
+            - Expense
+            - Other Expense
+        account_subtype:
+          type: string
+          description: Subtype of the account (varies based on account_type)
+        account_number:
+          type: string
+          description: Unique account number within the user's chart of accounts
+        description:
+          type: string
+          description: Optional description of the account
+        is_active:
+          type: boolean
+          description: Whether the account is active
+          default: true
+        opening_balance:
+          type: number
+          format: float
+          description: Opening balance of the account
+          default: 0.0
+        current_balance:
+          type: number
+          format: float
+          description: Current balance of the account
+          default: 0.0
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the account was created
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the account was last updated
+          readOnly: true
+
+    AccountTypeDetails:
+      type: object
+      description: Map of account types to their valid subtypes
+      additionalProperties:
+        type: array
+        items:
+          type: string
+
+paths:
+  /create_account:
+    post:
+      summary: Create a new account in the chart of accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - account_name
+                - account_type
+                - account_subtype
+                - account_number
+              properties:
+                account_name:
+                  type: string
+                account_type:
+                  type: string
+                account_subtype:
+                  type: string
+                account_number:
+                  type: string
+                description:
+                  type: string
+                opening_balance:
+                  type: number
+                  format: float
+                  default: 0.0
+      responses:
+        '201':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  missing_fields:
+                    type: array
+                    items:
+                      type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /get_accounts:
+    get:
+      summary: Get all accounts for the current user
+      responses:
+        '200':
+          description: List of accounts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Account'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /get_account/{account_id}:
+    get:
+      summary: Get details of a specific account
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /update_account/{account_id}:
+    patch:
+      summary: Update account details
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_name:
+                  type: string
+                account_type:
+                  type: string
+                account_subtype:
+                  type: string
+                account_number:
+                  type: string
+                description:
+                  type: string
+                is_active:
+                  type: boolean
+                opening_balance:
+                  type: number
+                  format: float
+                current_balance:
+                  type: number
+                  format: float
+      responses:
+        '200':
+          description: Account updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /delete_account/{account_id}:
+    delete:
+      summary: Delete an account
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /account_types:
+    get:
+      summary: Get all valid account types and their subtypes
+      responses:
+        '200':
+          description: Account types retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountTypeDetails'

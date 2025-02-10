@@ -1,0 +1,498 @@
+openapi: 3.0.0
+info:
+  title: Transactions API
+  version: 1.0.0
+  description: API for managing financial transactions in the accounting system
+
+components:
+  schemas:
+    TransactionEntry:
+      type: object
+      required:
+        - account_id
+      properties:
+        account_id:
+          type: string
+          description: ID of the account for this entry
+        debit_amount:
+          type: number
+          format: float
+          default: 0
+          description: Debit amount for this entry
+        credit_amount:
+          type: number
+          format: float
+          default: 0
+          description: Credit amount for this entry
+        description:
+          type: string
+          description: Description for this entry
+
+    Transaction:
+      type: object
+      required:
+        - user_id
+        - description
+        - entries
+      properties:
+        user_id:
+          type: string
+          description: ID of the user who owns this transaction
+        transaction_id:
+          type: string
+          description: Unique identifier for the transaction (format TXN######-######)
+          readOnly: true
+        transaction_date:
+          type: string
+          format: date-time
+          description: Date of the transaction
+        description:
+          type: string
+          description: Description of the transaction
+        type:
+          type: string
+          description: Type of transaction
+          enum:
+            - sales_invoice
+            - sales_receipt
+            - credit_sale
+            - sales_return
+            - purchase_invoice
+            - purchase_order
+            - purchase_receipt
+            - credit_purchase
+            - payment
+            - bank_deposit
+            - transfer
+            - payment_reversal
+            - general_expense
+            - travel_expense
+            - loan_payment
+            - bank_withdrawal
+            - recurring_transaction
+            - journal_entry
+            - period_adjustment
+            - transaction_reversal
+            - stock_adjustment
+            - inventory_transfer
+            - depreciation
+            - amortization
+            - bad_debt_expense
+            - bad_debt_recovery
+            - legal_settlement
+          default: journal_entry
+        status:
+          type: string
+          enum:
+            - draft
+            - posted
+            - void
+          description: Current status of the transaction
+          default: draft
+        total_amount:
+          type: number
+          format: float
+          description: Total amount of the transaction
+          readOnly: true
+        notes:
+          type: string
+          description: Additional notes for the transaction
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionEntry'
+          description: List of transaction entries
+          minItems: 1
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          description: Last modification timestamp
+          readOnly: true
+        posted_at:
+          type: string
+          format: date-time
+          description: When the transaction was posted
+          readOnly: true
+        voided_at:
+          type: string
+          format: date-time
+          description: When the transaction was voided
+          readOnly: true
+        void_reason:
+          type: string
+          description: Reason for voiding the transaction
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+
+paths:
+  /create_transaction:
+    post:
+      summary: Create a new transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - description
+                - entries
+              properties:
+                description:
+                  type: string
+                  description: Description of the transaction
+                type:
+                  type: string
+                  description: Type of transaction
+                  enum:
+                    - sales_invoice
+                    - sales_receipt
+                    - credit_sale
+                    - sales_return
+                    - purchase_invoice
+                    - purchase_order
+                    - purchase_receipt
+                    - credit_purchase
+                    - payment
+                    - bank_deposit
+                    - transfer
+                    - payment_reversal
+                    - general_expense
+                    - travel_expense
+                    - loan_payment
+                    - bank_withdrawal
+                    - recurring_transaction
+                    - journal_entry
+                    - period_adjustment
+                    - transaction_reversal
+                    - stock_adjustment
+                    - inventory_transfer
+                    - depreciation
+                    - amortization
+                    - bad_debt_expense
+                    - bad_debt_recovery
+                    - legal_settlement
+                  default: journal_entry
+                notes:
+                  type: string
+                  description: Additional notes for the transaction
+                entries:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/TransactionEntry'
+                  minItems: 1
+                  description: List of transaction entries (debits and credits)
+      responses:
+        '201':
+          description: Transaction created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  transaction:
+                    $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_transactions:
+    get:
+      summary: Get all transactions for the current user
+      responses:
+        '200':
+          description: List of transactions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_transaction/{transaction_id}:
+    get:
+      summary: Get details of a specific transaction
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the transaction to retrieve
+      responses:
+        '200':
+          description: Transaction details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '404':
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /update_transaction/{transaction_id}:
+    patch:
+      summary: Update a transaction
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the transaction to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                type:
+                  type: string
+                  enum:
+                    - sales_invoice
+                    - sales_receipt
+                    - credit_sale
+                    - sales_return
+                    - purchase_invoice
+                    - purchase_order
+                    - purchase_receipt
+                    - credit_purchase
+                    - payment
+                    - bank_deposit
+                    - transfer
+                    - payment_reversal
+                    - general_expense
+                    - travel_expense
+                    - loan_payment
+                    - bank_withdrawal
+                    - recurring_transaction
+                    - journal_entry
+                    - period_adjustment
+                    - transaction_reversal
+                    - stock_adjustment
+                    - inventory_transfer
+                    - depreciation
+                    - amortization
+                    - bad_debt_expense
+                    - bad_debt_recovery
+                    - legal_settlement
+                transaction_date:
+                  type: string
+                  format: date-time
+                notes:
+                  type: string
+                entries:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/TransactionEntry'
+                status:
+                  type: string
+                  enum:
+                    - draft
+                    - posted
+                    - void
+                void_reason:
+                  type: string
+                  description: Required when status is changed to void
+      responses:
+        '200':
+          description: Transaction updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  transaction:
+                    $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /delete_transaction/{transaction_id}:
+    delete:
+      summary: Delete a transaction
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the transaction to delete
+      responses:
+        '200':
+          description: Transaction deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Bad request - only void transactions can be deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /post_transaction/{transaction_id}:
+    post:
+      summary: Post a transaction
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the transaction to post
+      responses:
+        '200':
+          description: Transaction posted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  transaction:
+                    $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /void_transaction/{transaction_id}:
+    post:
+      summary: Void a transaction
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the transaction to void
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - void_reason
+              properties:
+                void_reason:
+                  type: string
+                  description: Reason for voiding the transaction
+      responses:
+        '200':
+          description: Transaction voided successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  transaction:
+                    $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

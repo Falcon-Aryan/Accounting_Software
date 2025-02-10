@@ -1,0 +1,379 @@
+openapi: 3.0.0
+info:
+  title: Estimates API
+  version: 1.0.0
+
+components:
+  schemas:
+    EstimateLineItem:
+      type: object
+      required:
+        - type
+        - item_id
+        - name
+        - price
+        - quantity
+        - amount
+      properties:
+        type:
+          type: string
+          enum: [product, service]
+        item_id:
+          type: string
+          pattern: ^(PROD|SERV)
+        name:
+          type: string
+        price:
+          type: number
+          format: float
+        quantity:
+          type: number
+          format: float
+          default: 1.0
+        description:
+          type: string
+        amount:
+          type: number
+          format: float
+
+    Estimate:
+      type: object
+      required:
+        - user_id
+        - estimate_id
+        - estimate_date
+        - expiry_date
+        - customer_id
+        - status
+        - payment_terms
+        - line_items
+        - total
+      properties:
+        user_id:
+          type: string
+        estimate_id:
+          type: string
+          pattern: ^EST
+        estimate_date:
+          type: string
+          format: date-time
+        expiry_date:
+          type: string
+          format: date-time
+        customer_id:
+          type: string
+          pattern: ^CUST
+        status:
+          type: string
+          enum: [draft, sent, accepted, declined, expired, converted]
+          default: draft
+        payment_terms:
+          type: string
+          enum: [net15, net30, net60, due_on_receipt]
+          default: net30
+        total:
+          type: number
+          format: float
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EstimateLineItem'
+        notes:
+          type: string
+        sent_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: string
+          format: date-time
+        declined_at:
+          type: string
+          format: date-time
+        decline_reason:
+          type: string
+        converted_at:
+          type: string
+          format: date-time
+
+paths:
+  /create_estimate:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - customer_id
+                - line_items
+                - payment_terms
+              properties:
+                customer_id:
+                  type: string
+                  pattern: ^CUST
+                line_items:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - item_id
+                      - quantity
+                    properties:
+                      item_id:
+                        type: string
+                        pattern: ^(PROD|SERV)
+                      quantity:
+                        type: number
+                        format: float
+                        minimum: 0.1
+                      description:
+                        type: string
+                payment_terms:
+                  type: string
+                  enum: [net15, net30, net60, due_on_receipt]
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Estimate created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  estimate_id:
+                    type: string
+        '400':
+          description: Bad request - invalid input data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /get_estimate/{estimate_id}:
+    get:
+      parameters:
+        - name: estimate_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^EST
+      responses:
+        '200':
+          description: Estimate retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Estimate'
+        '404':
+          description: Estimate not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /list_estimates:
+    get:
+      description: List all estimates for current user
+      responses:
+        '200':
+          description: List of estimates retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  estimates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Estimate'
+                  total:
+                    type: integer
+                    description: Total number of estimates
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /update_estimate/{estimate_id}:
+    patch:
+      parameters:
+        - name: estimate_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^EST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [draft, sent, accepted, declined, expired, converted]
+                customer_id:
+                  type: string
+                  pattern: ^CUST
+                line_items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EstimateLineItem'
+                payment_terms:
+                  type: string
+                  enum: [net15, net30, net60, due_on_receipt]
+                notes:
+                  type: string
+                decline_reason:
+                  type: string
+      responses:
+        '200':
+          description: Estimate updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  estimate:
+                    $ref: '#/components/schemas/Estimate'
+        '400':
+          description: Bad request - invalid input data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Estimate not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /delete_estimate/{estimate_id}:
+    delete:
+      parameters:
+        - name: estimate_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^EST
+      responses:
+        '200':
+          description: Estimate successfully deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '404':
+          description: Estimate not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /convert_to_invoice/{estimate_id}:
+    post:
+      parameters:
+        - name: estimate_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^EST
+      responses:
+        '200':
+          description: Successfully converted estimate to invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  invoice_id:
+                    type: string
+        '404':
+          description: Estimate not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string

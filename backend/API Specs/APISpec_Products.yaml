@@ -1,0 +1,263 @@
+openapi: 3.0.0
+info:
+  title: Products API Specification
+  version: 1.0.0
+  description: API specification for the physical products management system
+
+components:
+
+  schemas:
+    Product:
+      type: object
+      required:
+        - product_id
+        - user_id
+        - name
+        - price
+        - stock
+        - sku
+        - type
+      properties:
+        product_id:
+          type: string
+          description: Unique identifier for the product (format PRODXXXXXX-XXXXXX)
+        user_id:
+          type: string
+          description: ID of the user who owns this product
+        name:
+          type: string
+          description: Name of the product
+        price:
+          type: number
+          format: float
+          description: Price of the product
+        stock:
+          type: integer
+          description: Current stock quantity
+        sku:
+          type: string
+          description: Stock Keeping Unit (unique identifier)
+        description:
+          type: string
+          nullable: true
+          description: Optional product description
+        category:
+          type: array
+          items:
+            type: string
+          description: List of categories this product belongs to
+        type:
+          type: string
+          enum: [product]
+          description: Type identifier, always set to 'product'
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when product was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when product was last updated
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        missing_fields:
+          type: array
+          items:
+            type: string
+          description: List of missing required fields (only for 400 errors)
+
+paths:
+  /create_product:
+    post:
+      summary: Create a new product
+      description: Create a new physical product with the given details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - price
+                - stock
+                - sku
+              properties:
+                name:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                stock:
+                  type: integer
+                sku:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Product with SKU already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_products:
+    get:
+      summary: Get all products
+      description: Get all products for the authenticated user
+      responses:
+        '200':
+          description: Successfully retrieved products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '400':
+          description: Error retrieving products
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_product/{product_id}:
+    get:
+      summary: Get product details
+      description: Get detailed information about a specific product
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the product to retrieve
+      responses:
+        '200':
+          description: Successfully retrieved product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error retrieving product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /update_product/{product_id}:
+    patch:
+      summary: Update product details
+      description: Update details of a specific product
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the product to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                stock:
+                  type: integer
+                sku:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error updating product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /delete_product/{product_id}:
+    delete:
+      summary: Delete a product
+      description: Delete a specific product
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the product to delete
+      responses:
+        '200':
+          description: Product deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Product deleted successfully
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Error deleting product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

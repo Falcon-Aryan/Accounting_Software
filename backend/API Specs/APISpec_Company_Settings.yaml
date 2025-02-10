@@ -1,0 +1,209 @@
+openapi: 3.0.0
+info:
+  title: Company Settings API
+  description: API for managing company settings in the accounting software
+  version: 1.0.0
+
+servers:
+  - url: /api
+
+components:
+  schemas:
+    Company:
+      type: object
+      required:
+        - company_name
+        - legal_name
+        - identity_type
+        - identity_number
+        - tax_form
+        - industry
+        - company_email
+        - customer_facing_email
+        - company_phone
+        - company_street
+        - company_city
+        - company_state
+        - company_postal_code
+        - company_country
+      properties:
+        user_id:
+          type: string
+          description: ID of the user who owns these settings
+        company_name:
+          type: string
+          description: Name of the company
+        legal_name:
+          type: string
+          description: Legal name of the company
+        identity_type:
+          type: string
+          description: Type of business identity
+        identity_number:
+          type: string
+          description: Business identification number
+        tax_form:
+          type: string
+          enum:
+            - sole_proprietorship
+            - partnership
+            - llc
+            - corporation
+            - s_corporation
+          description: Tax form type
+        industry:
+          type: string
+          enum:
+            - retail
+            - manufacturing
+            - services
+            - construction
+            - technology
+            - healthcare
+            - finance
+            - real_estate
+            - other
+          description: Industry type
+        company_email:
+          type: string
+          format: email
+          description: Primary company email
+        customer_facing_email:
+          type: string
+          format: email
+          description: Email shown to customers
+        company_phone:
+          type: string
+          description: Company phone number
+        company_street:
+          type: string
+          description: Street address
+        company_city:
+          type: string
+          description: City
+        company_state:
+          type: string
+          enum:
+            - AL
+            - AK
+            - AZ
+            - AR
+            - CA
+            - CO
+            - CT
+            - DE
+            - FL
+            - GA
+            - HI
+            - ID
+            - IL
+            - IN
+            - IA
+            - KS
+            - KY
+            - LA
+            - ME
+            - MD
+            - MA
+            - MI
+            - MN
+            - MS
+            - MO
+            - MT
+            - NE
+            - NV
+            - NH
+            - NJ
+            - NM
+            - NY
+            - NC
+            - ND
+            - OH
+            - OK
+            - OR
+            - PA
+            - RI
+            - SC
+            - SD
+            - TN
+            - TX
+            - UT
+            - VT
+            - VA
+            - WA
+            - WV
+            - WI
+            - WY
+          description: State/Province
+        company_postal_code:
+          type: string
+          description: Postal/ZIP code
+        company_country:
+          type: string
+          description: Country
+        website:
+          type: string
+          description: Company website URL
+        same_as_company_name:
+          type: boolean
+          default: true
+          description: Use company name as legal name
+        same_as_company_email:
+          type: boolean
+          default: true
+          description: Use company email as customer-facing email
+
+paths:
+  /company/create_company:
+    post:
+      summary: Create company settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Company'
+      responses:
+        '200':
+          description: Company settings created successfully
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+
+  /company/update_company:
+    patch:
+      summary: Update company settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Company'
+      responses:
+        '200':
+          description: Company settings updated successfully
+        '404':
+          description: Company settings not found
+
+  /company/delete_company:
+    delete:
+      summary: Delete company settings
+      responses:
+        '200':
+          description: Company settings deleted successfully
+        '404':
+          description: Company settings not found
+
+  /company/get_company:
+    get:
+      summary: Get company settings
+      responses:
+        '200':
+          description: Company settings details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '404':
+          description: Company settings not found

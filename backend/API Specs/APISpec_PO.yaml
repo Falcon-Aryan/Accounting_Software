@@ -1,0 +1,247 @@
+openapi: 3.0.0
+info:
+  title: Purchase Orders API
+  description: API for managing purchase orders in the accounting software
+  version: 1.0.0
+
+servers:
+  - url: /api
+
+components:
+  schemas:
+    PurchaseOrderLineItem:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - product
+            - service
+            - material
+            - asset
+            - expense
+          description: Type of item
+        item_id:
+          type: string
+          description: ID of the product or service
+        name:
+          type: string
+          description: Name of the item
+        price:
+          type: number
+          format: float
+          description: Price per unit
+        quantity:
+          type: number
+          format: float
+          description: Quantity of items
+          default: 1.0
+
+    PurchaseOrder:
+      type: object
+      properties:
+        po_id:
+          type: string
+          description: Unique identifier for the purchase order
+        user_id:
+          type: string
+          description: ID of the user who created the PO
+        po_date:
+          type: string
+          format: date-time
+          description: Date when PO was created
+        due_date:
+          type: string
+          format: date-time
+          description: Due date for the PO
+        vendor_id:
+          type: string
+          description: ID of the vendor
+        status:
+          type: string
+          enum:
+            - draft
+            - sent
+            - accepted
+            - declined
+            - partially_received
+            - received
+            - cancelled
+            - closed
+          default: draft
+          description: Current status of the purchase order
+        payment_terms:
+          type: string
+          enum:
+            - due_on_receipt
+            - net15
+            - net30
+            - net45
+            - net60
+            - custom
+          default: net30
+          description: Payment terms for this purchase order
+        total:
+          type: number
+          format: float
+        amount_paid:
+          type: number
+          format: float
+        balance:
+          type: number
+          format: float
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PurchaseOrderLineItem'
+        notes:
+          type: string
+        document_id:
+          type: string
+        sent_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: string
+          format: date-time
+        declined_at:
+          type: string
+          format: date-time
+        decline_reason:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+paths:
+  /purchase_orders/create_po:
+    post:
+      summary: Create a new purchase order
+      description: Creates a new purchase order. Requires a valid vendor_id that belongs to the authenticated user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vendor_id
+                - line_items
+                - payment_terms
+              properties:
+                vendor_id:
+                  type: string
+                  description: ID of an existing vendor that belongs to the user
+                line_items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PurchaseOrderLineItem'
+                  minItems: 1
+                  description: At least one line item is required
+                payment_terms:
+                  type: string
+                  enum:
+                    - due_on_receipt
+                    - net15
+                    - net30
+                    - net45
+                    - net60
+                    - custom
+                  default: net30
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Purchase order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseOrder'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - 'No data provided'
+                      - 'Missing required fields'
+                      - 'Vendor not found or does not belong to user'
+                      - 'Invalid payment terms'
+                      - 'Invalid line items'
+        '401':
+          description: Unauthorized - User not authenticated
+
+  /purchase_orders/update_po/{po_id}:
+    patch:
+      summary: Update an existing purchase order
+      parameters:
+        - name: po_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PurchaseOrder'
+      responses:
+        '200':
+          description: Purchase order updated successfully
+        '404':
+          description: Purchase order not found
+
+  /purchase_orders/delete_po/{po_id}:
+    delete:
+      summary: Delete a purchase order
+      parameters:
+        - name: po_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Purchase order deleted successfully
+        '404':
+          description: Purchase order not found
+
+  /purchase_orders/get_po/{po_id}:
+    get:
+      summary: Get a specific purchase order
+      parameters:
+        - name: po_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Purchase order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseOrder'
+        '404':
+          description: Purchase order not found
+
+  /purchase_orders/list_pos:
+    get:
+      summary: List all purchase orders for the current user
+      responses:
+        '200':
+          description: List of purchase orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PurchaseOrder'

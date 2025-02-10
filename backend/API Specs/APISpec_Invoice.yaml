@@ -1,0 +1,527 @@
+openapi: 3.0.0
+info:
+  title: Invoice API
+  version: 1.0.0
+  description: API for managing invoices in the accounting system
+
+components:
+  schemas:
+    InvoiceLineItem:
+      type: object
+      required:
+        - type
+        - item_id
+        - name
+        - price
+      properties:
+        type:
+          type: string
+          enum: [product, service]
+        item_id:
+          type: string
+          pattern: ^(PROD|SERV)
+        name:
+          type: string
+        price:
+          type: number
+          format: float
+        quantity:
+          type: number
+          format: float
+          default: 1.0
+        description:
+          type: string
+        amount:
+          type: number
+          format: float
+          readOnly: true
+
+    InvoicePayment:
+      type: object
+      required:
+        - amount
+        - payment_method
+      properties:
+        reference_id:
+          type: string
+          pattern: ^REFN
+          readOnly: true
+        transaction_id:
+          type: string
+          pattern: ^TRXN
+          readOnly: true
+        amount:
+          type: number
+          format: float
+        payment_date:
+          type: string
+          format: date-time
+        payment_method:
+          type: string
+        notes:
+          type: string
+        check_number:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    Invoice:
+      type: object
+      required:
+        - customer_id
+        - line_items
+        - payment_terms
+      properties:
+        invoice_id:
+          type: string
+          pattern: ^INV
+          readOnly: true
+        invoice_date:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date-time
+        customer_id:
+          type: string
+        status:
+          type: string
+          enum: [draft, sent, accepted, declined, paid, partially_paid, overdue, voided]
+          default: draft
+        payment_terms:
+          type: string
+          enum: [net15, net30, net60, due_on_receipt]
+          default: net30
+        total:
+          type: number
+          format: float
+          readOnly: true
+        amount_paid:
+          type: number
+          format: float
+          readOnly: true
+        balance:
+          type: number
+          format: float
+          readOnly: true
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceLineItem'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoicePayment'
+          readOnly: true
+        notes:
+          type: string
+        sent_at:
+          type: string
+          format: date-time
+          readOnly: true
+        accepted_at:
+          type: string
+          format: date-time
+          readOnly: true
+        declined_at:
+          type: string
+          format: date-time
+          readOnly: true
+        decline_reason:
+          type: string
+        paid_at:
+          type: string
+          format: date-time
+          readOnly: true
+        voided_at:
+          type: string
+          format: date-time
+          readOnly: true
+        void_reason:
+          type: string
+        converted_from:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+paths:
+  /create_invoice:
+    post:
+      summary: Create a new invoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Invoice'
+      responses:
+        '201':
+          description: Invoice created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  invoice:
+                    $ref: '#/components/schemas/Invoice'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /get_invoice/{invoice_id}:
+    get:
+      summary: Get a specific invoice by ID
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^INV
+      responses:
+        '200':
+          description: Invoice retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /list_invoices:
+    get:
+      summary: List all invoices for the current user
+      responses:
+        '200':
+          description: List of invoices retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Invoice'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /update_invoice/{invoice_id}:
+    patch:
+      summary: Update an invoice
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^INV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Invoice'
+      responses:
+        '200':
+          description: Invoice updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  invoice:
+                    $ref: '#/components/schemas/Invoice'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /update_status/{invoice_id}:
+    post:
+      summary: Update invoice status
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^INV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [draft, sent, accepted, declined, paid, partially_paid, overdue, voided]
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /add_payment/{invoice_id}:
+    post:
+      summary: Add a payment to an invoice
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^INV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoicePayment'
+      responses:
+        '200':
+          description: Payment added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  invoice:
+                    $ref: '#/components/schemas/Invoice'
+                  payment:
+                    $ref: '#/components/schemas/InvoicePayment'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /get_payments/{invoice_id}:
+    get:
+      summary: Get all payments for an invoice
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^INV
+      responses:
+        '200':
+          description: Payments retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InvoicePayment'
+                  total_paid:
+                    type: number
+                    format: float
+                  balance:
+                    type: number
+                    format: float
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /get_payment/{invoice_id}/{reference_id}:
+    get:
+      summary: Get a specific payment by reference ID
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^INV
+        - name: reference_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^REFN
+      responses:
+        '200':
+          description: Payment retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    $ref: '#/components/schemas/InvoicePayment'
+        '404':
+          description: Invoice or payment not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /delete_invoice/{invoice_id}:
+    delete:
+      summary: Delete an invoice
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^INV
+      responses:
+        '200':
+          description: Invoice deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string

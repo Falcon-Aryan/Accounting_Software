@@ -1,0 +1,233 @@
+openapi: 3.0.0
+info:
+  title: Vendors API
+  description: API for managing vendors in the accounting software
+  version: 1.0.0
+
+servers:
+  - url: /api
+
+components:
+  schemas:
+    Vendor:
+      type: object
+      required:
+        - company_name
+        - contact_name
+        - vendor_email
+        - phone
+        - billing_street
+        - billing_city
+        - billing_state
+        - billing_postal_code
+        - billing_country
+      properties:
+        vendor_id:
+          type: string
+          description: Unique identifier for the vendor
+        user_id:
+          type: string
+          description: ID of the user who created the vendor
+        company_name:
+          type: string
+          description: Name of the vendor company
+        contact_name:
+          type: string
+          description: Name of the primary contact person
+        vendor_email:
+          type: string
+          format: email
+          description: Email address of the vendor
+        phone:
+          type: string
+          description: Phone number of the vendor
+        website:
+          type: string
+          description: Website URL of the vendor
+        vendor_type:
+          type: string
+          enum:
+            - supplier
+            - contractor
+            - consultant
+            - manufacturer
+            - distributor
+          description: Type of vendor
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+            - blocked
+            - pending
+            - archived
+          default: active
+          description: Current status of the vendor
+        payment_terms:
+          type: string
+          enum:
+            - due_on_receipt
+            - net15
+            - net30
+            - net45
+            - net60
+            - custom
+          description: Payment terms for this vendor
+        billing_street:
+          type: string
+          description: Street address for billing
+        billing_city:
+          type: string
+          description: City for billing
+        billing_state:
+          type: string
+          enum:
+            - AL
+            - AK
+            - AZ
+            - AR
+            - CA
+            - CO
+            - CT
+            - DE
+            - FL
+            - GA
+            - HI
+            - ID
+            - IL
+            - IN
+            - IA
+            - KS
+            - KY
+            - LA
+            - ME
+            - MD
+            - MA
+            - MI
+            - MN
+            - MS
+            - MO
+            - MT
+            - NE
+            - NV
+            - NH
+            - NJ
+            - NM
+            - NY
+            - NC
+            - ND
+            - OH
+            - OK
+            - OR
+            - PA
+            - RI
+            - SC
+            - SD
+            - TN
+            - TX
+            - UT
+            - VT
+            - VA
+            - WA
+            - WV
+            - WI
+            - WY
+          description: State/Province for billing
+        billing_postal_code:
+          type: string
+          description: Postal code for billing
+        billing_country:
+          type: string
+          description: Country for billing
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+paths:
+  /vendors/create_vendor:
+    post:
+      summary: Create a new vendor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vendor'
+      responses:
+        '200':
+          description: Vendor created successfully
+        '400':
+          description: Invalid input or duplicate vendor
+        '401':
+          description: Unauthorized
+
+  /vendors/update_vendor/{vendor_id}:
+    patch:
+      summary: Update an existing vendor
+      parameters:
+        - name: vendor_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Vendor'
+      responses:
+        '200':
+          description: Vendor updated successfully
+        '404':
+          description: Vendor not found
+
+  /vendors/delete_vendor/{vendor_id}:
+    delete:
+      summary: Delete a vendor
+      parameters:
+        - name: vendor_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Vendor deleted successfully
+        '404':
+          description: Vendor not found
+
+  /vendors/get_vendor/{vendor_id}:
+    get:
+      summary: Get a specific vendor
+      parameters:
+        - name: vendor_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Vendor details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vendor'
+        '404':
+          description: Vendor not found
+
+  /vendors/get_vendors:
+    get:
+      summary: List all vendors for the current user
+      responses:
+        '200':
+          description: List of vendors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Vendor'
